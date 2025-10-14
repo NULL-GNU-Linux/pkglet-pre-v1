@@ -90,24 +90,40 @@ end
 local function load_config()
 	local f = io.open(CONFIG_FILE, "r")
 	if not f then
-		local default_config = [[config = {
-        repos = {
-                {
-                        name = "main",
-                        url = "https://github.com/neoapps-dev/pleasedontclick.git",
-                        description = "The main repo for pkglet"
-                }
-        }
-}
-return config
-]]
-		local cf = io.open(CONFIG_FILE, "w")
-		cf:write(default_config)
-		cf:close()
+		local default_config_table = {
+			repos = {
+				{
+					name = "main",
+					url = "https://github.com/neoapps-dev/pleasedontclick.git",
+					description = "The main repo for pkglet",
+				},
+			},
+		}
+		save_config(default_config_table)
 	else
 		f:close()
 	end
 	return dofile(CONFIG_FILE)
+end
+
+local function save_config(config)
+	local f = io.open(CONFIG_FILE, "w")
+	f:write("config = {\n")
+	f:write("        repos = {\n")
+	for _, repo in ipairs(config.repos) do
+		f:write(
+			string.format(
+				'                {\n                        name = "%s",\n                        url = "%s",\n                        description = "%s"\n                },\n',
+				repo.name,
+				repo.url,
+				repo.description
+			)
+		)
+	end
+	f:write("        }\n")
+	f:write("}\n")
+	f:write("return config\n")
+	f:close()
 end
 
 local function load_db()
@@ -140,6 +156,64 @@ local function save_db(db)
 	end
 	f:write("}\n")
 	f:close()
+end
+
+local function add_and_update_repo(repo_source)
+	print("Adding repository from " .. repo_source .. "...")
+	local repo_content = ""
+
+	if repo_source:match("^https?://") then
+		local handle = io.popen("curl -sL " .. repo_source)
+		repo_content = handle:read("*all")
+		handle:close()
+		if repo_content == "" then
+			print("✗ Failed to fetch repo.lua from URL: " .. repo_source)
+			return
+		end
+	else
+		local f = io.open(repo_source, "r")
+		if not f then
+			print("✗ Failed to open repo.lua file: " .. repo_source)
+			return
+		end
+		repo_content = f:read("*all")
+		f:close()
+	end
+
+	local new_repo_func = load(repo_content)
+	if not new_repo_func then
+		print("✗ Failed to parse repo.lua content.")
+		return
+	end
+
+	local new_repo = new_repo_func()
+	if not new_repo or not new_repo.name or not new_repo.url or not new_repo.description then
+		print("✗ Invalid repo.lua format. Missing name, url, or description.")
+		return
+	end
+
+	local config = load_config()
+	local repo_exists = false
+	for _, repo in ipairs(config.repos) do
+		if repo.name == new_repo.name then
+			repo_exists = true
+			print(
+				"⚠ Repository with name '" .. new_repo.name .. "' already exists. Updating its URL and description."
+			)
+			repo.url = new_repo.url
+			repo.description = new_repo.description
+			break
+		end
+	end
+
+	if not repo_exists then
+		table.insert(config.repos, new_repo)
+		print("✓ Added new repository: " .. new_repo.name)
+	end
+
+	save_config(config)
+	update_repos()
+	print("✓ Repository added and updated successfully.")
 end
 
 local function update_repos()
@@ -461,12 +535,15 @@ local function main(args)
 	end
 
 	if args[1] == "u" then
-		update_repos()
+		if args[2] then
+			add_and_update_repo(args[2])
+		else
+			update_repos()
+		end
 		return
 	end
 
 	if args[1] == "uu" then
-		update_repos()
 		upgrade_packages()
 		return
 	end
