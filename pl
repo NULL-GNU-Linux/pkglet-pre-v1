@@ -148,7 +148,7 @@ local function update_repos()
 	for _, repo in ipairs(config.repos) do
 		print("\n→ " .. repo.name)
 		local repo_path = REPO_DIR .. "/" .. repo.name
-		if os.execute("test -d " .. repo_path) == 0 then
+		if os.execute("test -d " .. repo_path) then
 			print("  Pulling updates...")
 			os.execute("cd " .. repo_path .. " && git pull -q")
 		else
