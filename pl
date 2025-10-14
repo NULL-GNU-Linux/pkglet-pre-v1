@@ -259,6 +259,86 @@ local function create_hook_system()
 end
 
 local function load_package(pkg_path)
+	local pkg = {}
+	pkg.files = {}
+
+	local function shell_escape(s)
+		return "'" .. s:gsub("'", "'" .. "\\" .. "'" .. "'") .. "'"
+	end
+
+	local function dirname(path)
+		local dir = path:match("^(.*)/[^/]*$")
+		return dir -- Returns nil if no '/' is found, or the directory part
+	end
+
+	local function install(source_path, destination_path, permissions)
+		local full_dest_path = (ROOT or "") .. destination_path
+		local pkg_dir = pkg_path:match("(.*)/[^/]+$")
+		local full_source_path = pkg_dir .. "/" .. source_path
+		print("  Installing '" .. source_path .. "' to '" .. full_dest_path .. "'")
+		local parent_dir = dirname(full_dest_path)
+		if parent_dir ~= nil and parent_dir ~= "" then
+			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		end
+		local success = os.execute("cp -r " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
+		if not success then error("Failed to install '" .. source_path .. "'") end
+		if permissions then
+			local chmod_success = os.execute("chmod " .. permissions .. " " .. shell_escape(full_dest_path))
+			if not chmod_success then error("Failed to set permissions for '" .. full_dest_path .. "'") end
+		end
+		table.insert(pkg.files, full_dest_path)
+	end
+
+	local function uninstall(destination_path)
+		local full_dest_path = (ROOT or "") .. destination_path
+		print("  Uninstalling '" .. full_dest_path .. "'")
+		local success = os.execute("rm -rf " .. shell_escape(full_dest_path))
+		if not success then error("Failed to uninstall '" .. full_dest_path .. "'") end
+	end
+
+	local function symlink(source_path, destination_path)
+		local full_source_path = (ROOT or "") .. source_path
+		local full_dest_path = (ROOT or "") .. destination_path
+		print("  Symlinking '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
+		local parent_dir = dirname(full_dest_path)
+		if parent_dir ~= nil and parent_dir ~= "" then
+			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		end
+		local success = os.execute("ln -sf " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
+		if not success then error("Failed to create symlink from '" .. full_source_path .. "' to '" .. full_dest_path .. "'") end
+		table.insert(pkg.files, full_dest_path)
+	end
+
+	local function sh(command)
+		print("  Executing shell command: " .. command)
+		local success = os.execute(command)
+		if not success then error("Shell command failed: " .. command) end
+	end
+
+	local function gitclone(repo_url, destination_path)
+		local full_dest_path = (ROOT or "") .. destination_path
+		print("  Cloning git repository '" .. repo_url .. "' to '" .. full_dest_path .. "'")
+		local parent_dir = dirname(full_dest_path)
+		if parent_dir ~= nil and parent_dir ~= "" then
+			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		end
+		local success = os.execute("git clone --progress " .. shell_escape(repo_url) .. " " .. shell_escape(full_dest_path))
+		if not success then error("Failed to clone git repository: " .. repo_url) end
+		table.insert(pkg.files, full_dest_path)
+	end
+
+	local function wget(url, destination_path)
+		local full_dest_path = (ROOT or "") .. destination_path
+		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "'")
+		local parent_dir = dirname(full_dest_path)
+		if parent_dir ~= nil and parent_dir ~= "" then
+			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		end
+		local success = os.execute("wget -q --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url))
+		if not success then error("Failed to download file from '" .. url .. "'") end
+		table.insert(pkg.files, full_dest_path)
+	end
+
 	local env = {
 		os = os,
 		io = io,
@@ -271,7 +351,13 @@ local function load_package(pkg_path)
 		ipairs = ipairs,
 		pairs = pairs,
 		ROOT = ROOT,
-		pkg = {},
+		pkg = pkg,
+		install = install,
+		uninstall = uninstall,
+		symlink = symlink,
+		sh = sh,
+		gitclone = gitclone,
+		wget = wget,
 	}
 	setmetatable(env, { __index = _G })
 
