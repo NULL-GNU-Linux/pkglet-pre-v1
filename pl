@@ -167,6 +167,22 @@ local function save_db(db)
 	f:write("}\n")
 	f:close()
 end
+local function update_repos()
+	local config = load_config()
+	print("Updating repositories...")
+	for _, repo in ipairs(config.repos) do
+		print("\n→ " .. repo.name)
+		local repo_path = REPO_DIR .. "/" .. repo.name
+		if os.execute("test -d " .. repo_path) then
+			print("  Pulling updates...")
+			os.execute("cd " .. repo_path .. " && git pull -q")
+		else
+			print("  Cloning repository...")
+			os.execute("git clone -q " .. repo.url .. " " .. repo_path)
+		end
+	end
+	print("\n✓ Repositories updated")
+end
 
 local function add_and_update_repo(repo_source)
 	print("Adding repository from " .. repo_source .. "...")
@@ -222,25 +238,8 @@ local function add_and_update_repo(repo_source)
 	end
 
 	save_config(config)
-	print("✓ Repository added successfully.")
-	print("Don't forget to update repos.")
-end
-
-local function update_repos()
-	local config = load_config()
-	print("Updating repositories...")
-	for _, repo in ipairs(config.repos) do
-		print("\n→ " .. repo.name)
-		local repo_path = REPO_DIR .. "/" .. repo.name
-		if os.execute("test -d " .. repo_path) then
-			print("  Pulling updates...")
-			os.execute("cd " .. repo_path .. " && git pull -q")
-		else
-			print("  Cloning repository...")
-			os.execute("git clone -q " .. repo.url .. " " .. repo_path)
-		end
-	end
-	print("\n✓ Repositories updated")
+	update_repos()
+	print("✓ Repository added and updated successfully.")
 end
 
 local function find_package(pkg_name)
