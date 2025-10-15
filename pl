@@ -363,11 +363,31 @@ local function load_package(pkg_path)
 		if CURRENT_SOURCE_BASE_DIR ~= nil then
 			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
 		end
-		local full_command = cd_prefix .. "wget -q --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
+		local full_command = cd_prefix .. "wget --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
 		local success =
 			os.execute(full_command)
 		if not success then
 			error("Failed to download file from '" .. url .. "'")
+		end
+		table.insert(pkg.files, full_dest_path)
+	end
+
+	local function curl(url, destination_path)
+		local full_dest_path = (ROOT or "") .. destination_path
+		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "' using curl")
+		local parent_dir = dirname(full_dest_path)
+		if parent_dir ~= nil and parent_dir ~= "" then
+			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		end
+		local cd_prefix = ""
+		if CURRENT_SOURCE_BASE_DIR ~= nil then
+			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+		end
+		local full_command = cd_prefix .. "curl -L --progress-bar -o " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
+		local success =
+			os.execute(full_command)
+		if not success then
+			error("Failed to download file from '" .. url .. "' using curl")
 		end
 		table.insert(pkg.files, full_dest_path)
 	end
@@ -391,6 +411,7 @@ local function load_package(pkg_path)
 		sh = sh,
 		gitclone = gitclone,
 		wget = wget,
+		curl = curl,
 	}
 	setmetatable(env, { __index = _G })
 
