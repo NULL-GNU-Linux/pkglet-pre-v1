@@ -355,7 +355,7 @@ local function load_package(pkg_path)
 	end
 
 	local function wget(url, destination_path)
-		local full_dest_path = (ROOT or "") .. destination_path
+		local full_dest_path = destination_path
 		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "'")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
@@ -378,7 +378,7 @@ local function load_package(pkg_path)
 	end
 
 	local function curl(url, destination_path)
-		local full_dest_path = (ROOT or "") .. destination_path
+		local full_dest_path = destination_path
 		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "' using curl")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
