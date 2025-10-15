@@ -343,9 +343,12 @@ local function load_package(pkg_path)
 		if CURRENT_SOURCE_BASE_DIR ~= nil then
 			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
 		end
-		local full_command = cd_prefix .. "git clone --progress " .. shell_escape(repo_url) .. " " .. shell_escape(full_dest_path)
-		local success =
-			os.execute(full_command)
+		local full_command = cd_prefix
+			.. "git clone --progress "
+			.. shell_escape(repo_url)
+			.. " "
+			.. shell_escape(full_dest_path)
+		local success = os.execute(full_command)
 		if not success then
 			error("Failed to clone git repository: " .. repo_url)
 		end
@@ -363,9 +366,12 @@ local function load_package(pkg_path)
 		if CURRENT_SOURCE_BASE_DIR ~= nil then
 			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
 		end
-		local full_command = cd_prefix .. "wget --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
-		local success =
-			os.execute(full_command)
+		local full_command = cd_prefix
+			.. "wget --show-progress -O "
+			.. shell_escape(full_dest_path)
+			.. " "
+			.. shell_escape(url)
+		local success = os.execute(full_command)
 		if not success then
 			error("Failed to download file from '" .. url .. "'")
 		end
@@ -383,9 +389,12 @@ local function load_package(pkg_path)
 		if CURRENT_SOURCE_BASE_DIR ~= nil then
 			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
 		end
-		local full_command = cd_prefix .. "curl -L --progress-bar -o " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
-		local success =
-			os.execute(full_command)
+		local full_command = cd_prefix
+			.. "curl -fSL --progress-bar -o "
+			.. shell_escape(full_dest_path)
+			.. " "
+			.. shell_escape(url)
+		local success = os.execute(full_command)
 		if not success then
 			error("Failed to download file from '" .. url .. "' using curl")
 		end
@@ -554,15 +563,15 @@ local function build_from_source(pkg_name, skip_deps)
 	os.execute("rm -rf " .. build_dir)
 	os.execute("mkdir -p " .. build_dir)
 
-    local old_dir = os.getenv("PWD")
-    os.execute("cd " .. shell_escape(build_dir))
+	local old_dir = os.getenv("PWD")
+	os.execute("cd " .. shell_escape(build_dir))
 
-    CURRENT_SOURCE_BASE_DIR = build_dir
+	CURRENT_SOURCE_BASE_DIR = build_dir
 
-    local hook, hooks = create_hook_system()
-    pkg.source()(hook)
+	local hook, hooks = create_hook_system()
+	pkg.source()(hook)
 
-    os.execute("cd " .. shell_escape(old_dir))
+	os.execute("cd " .. shell_escape(old_dir))
 	if hooks.prepare then
 		hooks.prepare()
 	end
