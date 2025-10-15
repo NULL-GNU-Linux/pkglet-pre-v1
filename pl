@@ -321,7 +321,11 @@ local function load_package(pkg_path)
 
 	local function sh(command)
 		print("  Executing shell command: " .. command)
-		local full_command = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && " .. command
+		local cd_prefix = ""
+		if CURRENT_SOURCE_BASE_DIR ~= nil then
+			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+		end
+		local full_command = cd_prefix .. command
 		local success = os.execute(full_command)
 		if not success then
 			error("Shell command failed: " .. command)
@@ -335,7 +339,11 @@ local function load_package(pkg_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
 			os.execute("mkdir -p " .. shell_escape(parent_dir))
 		end
-		local full_command = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && git clone --progress " .. shell_escape(repo_url) .. " " .. shell_escape(full_dest_path)
+		local cd_prefix = ""
+		if CURRENT_SOURCE_BASE_DIR ~= nil then
+			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+		end
+		local full_command = cd_prefix .. "git clone --progress " .. shell_escape(repo_url) .. " " .. shell_escape(full_dest_path)
 		local success =
 			os.execute(full_command)
 		if not success then
@@ -351,7 +359,11 @@ local function load_package(pkg_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
 			os.execute("mkdir -p " .. shell_escape(parent_dir))
 		end
-		local full_command = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && wget -q --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
+		local cd_prefix = ""
+		if CURRENT_SOURCE_BASE_DIR ~= nil then
+			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+		end
+		local full_command = cd_prefix .. "wget -q --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
 		local success =
 			os.execute(full_command)
 		if not success then
