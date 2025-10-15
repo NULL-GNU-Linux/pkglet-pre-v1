@@ -24,6 +24,16 @@ local REPO_DIR = os.getenv("HOME") .. "/.local/share/pkglet/repos"
 local CACHE_DIR = os.getenv("HOME") .. "/.cache/pkglet"
 local DB_FILE = os.getenv("HOME") .. "/.local/share/pkglet/installed.db"
 local CONFIG_FILE = os.getenv("HOME") .. "/.config/pkglet/config.lua"
+local CURRENT_SOURCE_BASE_DIR = nil
+
+local function shell_escape(s)
+	return "'" .. s:gsub("'", "'" .. "\\" .. "'" .. "'") .. "'"
+end
+
+local function dirname(path)
+	local dir = path:match("^(.*)/[^/]*$")
+	return dir
+end
 local function get_db_file()
 	if ROOT ~= "" then
 		return ROOT .. "/.pkglet.db"
@@ -262,18 +272,9 @@ local function load_package(pkg_path)
 	local pkg = {}
 	pkg.files = {}
 
-	local function shell_escape(s)
-		return "'" .. s:gsub("'", "'" .. "\\" .. "'" .. "'") .. "'"
-	end
-
-	local function dirname(path)
-		local dir = path:match("^(.*)/[^/]*$")
-		return dir
-	end
-
 	local function install(source_path, destination_path, permissions)
 		local full_dest_path = (ROOT or "") .. destination_path
-		local base_source_dir = pkg.source_base_dir or pkg_path:match("(.*)/[^/]+$")
+		local base_source_dir = CURRENT_SOURCE_BASE_DIR or pkg_path:match("(.*)/[^/]+$")
 		print(pkg.name)
 		local full_source_path = base_source_dir .. "/" .. source_path
 		print("  Installing '" .. source_path .. "' to '" .. full_dest_path .. "'")
@@ -320,7 +321,8 @@ local function load_package(pkg_path)
 
 	local function sh(command)
 		print("  Executing shell command: " .. command)
-		local success = os.execute(command)
+		local full_command = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && " .. command
+		local success = os.execute(full_command)
 		if not success then
 			error("Shell command failed: " .. command)
 		end
@@ -333,8 +335,9 @@ local function load_package(pkg_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
 			os.execute("mkdir -p " .. shell_escape(parent_dir))
 		end
+		local full_command = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && git clone --progress " .. shell_escape(repo_url) .. " " .. shell_escape(full_dest_path)
 		local success =
-			os.execute("git clone --progress " .. shell_escape(repo_url) .. " " .. shell_escape(full_dest_path))
+			os.execute(full_command)
 		if not success then
 			error("Failed to clone git repository: " .. repo_url)
 		end
@@ -348,8 +351,9 @@ local function load_package(pkg_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
 			os.execute("mkdir -p " .. shell_escape(parent_dir))
 		end
+		local full_command = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && wget -q --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url)
 		local success =
-			os.execute("wget -q --show-progress -O " .. shell_escape(full_dest_path) .. " " .. shell_escape(url))
+			os.execute(full_command)
 		if not success then
 			error("Failed to download file from '" .. url .. "'")
 		end
@@ -517,14 +521,15 @@ local function build_from_source(pkg_name, skip_deps)
 	os.execute("rm -rf " .. build_dir)
 	os.execute("mkdir -p " .. build_dir)
 
-	local old_dir = os.getenv("PWD")
-	os.execute("cd " .. build_dir)
+    local old_dir = os.getenv("PWD")
+    os.execute("cd " .. shell_escape(build_dir))
 
-	pkg.source_base_dir = build_dir
+    CURRENT_SOURCE_BASE_DIR = build_dir
 
-	local hook, hooks = create_hook_system()
-	pkg.source()(hook)
+    local hook, hooks = create_hook_system()
+    pkg.source()(hook)
 
+    os.execute("cd " .. shell_escape(old_dir))
 	if hooks.prepare then
 		hooks.prepare()
 	end
