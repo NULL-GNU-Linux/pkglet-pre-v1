@@ -104,8 +104,8 @@ local function load_config()
 			repos = {
 				{
 					name = "main",
-					url = "https://github.com/neoapps-dev/pleasedontclick.git",
-					description = "The main repo for pkglet",
+					url = "https://github.com/NULL-GNU-Linux/pl-main.git",
+					description = "The official Pkglet repo for NULL GNU/Linux",
 				},
 			},
 		}
