@@ -657,6 +657,7 @@ Usage:
   pl uu                       Upgrade installed packages
   pl l                        List installed packages
   pl -b=<path> <packages...>  Bootstrap mode (install to specified directory)
+  pl -bn=<path> <packages...> Bootstrap mode without filesystem initialization
   pl -v, --version            Show version
   pl -h, --help               Show this help
 
@@ -712,6 +713,13 @@ local function main(args)
 	for i, arg in ipairs(args) do
 		if skip_next then
 			skip_next = false
+		elseif arg:match("^%-bn=") then
+			ROOT = arg:match("^%-bn=(.+)")
+			if ROOT:sub(-1) == "/" then
+				ROOT = ROOT:sub(1, -2)
+			end
+			print("Bootstrap mode (no-init): " .. ROOT)
+			os.execute("mkdir -p " .. ROOT)
 		elseif arg:match("^%-b=") then
 			ROOT = arg:match("^%-b=(.+)")
 			if ROOT:sub(-1) == "/" then
