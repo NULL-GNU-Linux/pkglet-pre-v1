@@ -222,8 +222,8 @@ local function add_and_update_repo(repo_source)
 	end
 
 	save_config(config)
-	update_repos()
-	print("✓ Repository added and updated successfully.")
+	print("✓ Repository added successfully.")
+	print("Don't forget to update repos.")
 end
 
 local function update_repos()
