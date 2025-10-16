@@ -405,6 +405,7 @@ local function load_package(pkg_path)
 			error("Failed to download file from '" .. url .. "'")
 		end
 		table.insert(pkg.files, full_dest_path)
+		return full_dest_path
 	end
 
 	local function curl(url, destination_path)
@@ -428,6 +429,7 @@ local function load_package(pkg_path)
 			error("Failed to download file from '" .. url .. "' using curl")
 		end
 		table.insert(pkg.files, full_dest_path)
+		return full_dest_path
 	end
 
 	local env = {
@@ -475,6 +477,12 @@ local function resolve_dependencies(pkg, visited)
 	end
 
 	for _, dep in ipairs(pkg.depends) do
+		local build = false
+		if dep:match("^b/") then
+			dep = dep:sub(3)
+			build = true
+		end
+
 		if not visited[dep] and not is_installed(dep) then
 			visited[dep] = true
 			local dep_path = find_package(dep)
@@ -484,7 +492,7 @@ local function resolve_dependencies(pkg, visited)
 				for _, sub_dep in ipairs(sub_deps) do
 					table.insert(to_install, sub_dep)
 				end
-				table.insert(to_install, dep)
+				table.insert(to_install, { name = dep, build = build })
 			else
 				print("⚠ Warning: Dependency not found: " .. dep)
 			end
@@ -493,6 +501,8 @@ local function resolve_dependencies(pkg, visited)
 
 	return to_install
 end
+
+local build_from_source
 
 local function install_binary(pkg_name, skip_deps)
 	local pkg_path, repo_name = find_package(pkg_name)
@@ -508,14 +518,21 @@ local function install_binary(pkg_name, skip_deps)
 		if #deps > 0 then
 			print("\nResolving dependencies for " .. pkg_name .. ":")
 			for _, dep in ipairs(deps) do
-				print("  → " .. dep)
+				print("  → " .. dep.name)
 			end
 			print("")
 
-			for _, dep in ipairs(deps) do
-				if not install_binary(dep, true) then
-					print("✗ Failed to install dependency: " .. dep)
-					return false
+			for _, dep_info in ipairs(deps) do
+				if dep_info.build then
+					if not build_from_source(dep_info.name, true) then
+						print("✗ Failed to build dependency: " .. dep_info.name)
+						return false
+					end
+				else
+					if not install_binary(dep_info.name, true) then
+						print("✗ Failed to install dependency: " .. dep_info.name)
+						return false
+					end
 				end
 			end
 		end
@@ -524,13 +541,24 @@ local function install_binary(pkg_name, skip_deps)
 	local mode_str = ROOT ~= "" and " (binary, root=" .. ROOT .. ")" or " (binary)"
 	print("Installing " .. pkg_name .. mode_str .. "...")
 
+	local build_dir = CACHE_DIR .. "/build/" .. pkg.name
+	os.execute("rm -rf " .. build_dir)
+	os.execute("mkdir -p " .. build_dir)
+
+	CURRENT_SOURCE_BASE_DIR = build_dir
+
 	if not pkg.binary then
 		print("✗ Package does not support binary installation")
+		CURRENT_SOURCE_BASE_DIR = nil
 		return false
 	end
 
 	local hook, hooks = create_hook_system()
 	pkg.binary()(hook)
+
+	if hooks.prepare then
+		hooks.prepare()
+	end
 
 	if hooks.pre_install then
 		hooks.pre_install()
@@ -550,10 +578,11 @@ local function install_binary(pkg_name, skip_deps)
 	save_db(db)
 
 	print("\n✓ " .. pkg_name .. " installed successfully")
+	CURRENT_SOURCE_BASE_DIR = nil
 	return true
 end
 
-local function build_from_source(pkg_name, skip_deps)
+build_from_source = function(pkg_name, skip_deps)
 	local pkg_path, repo_name = find_package(pkg_name)
 	if not pkg_path then
 		print("✗ Package not found: " .. pkg_name)
@@ -567,14 +596,21 @@ local function build_from_source(pkg_name, skip_deps)
 		if #deps > 0 then
 			print("\nResolving dependencies for " .. pkg_name .. ":")
 			for _, dep in ipairs(deps) do
-				print("  → " .. dep)
+				print("  → " .. dep.name)
 			end
 			print("")
 
-			for _, dep in ipairs(deps) do
-				if not install_binary(dep, true) then
-					print("✗ Failed to install dependency: " .. dep)
-					return false
+			for _, dep_info in ipairs(deps) do
+				if dep_info.build then
+					if not build_from_source(dep_info.name, true) then
+						print("✗ Failed to build dependency: " .. dep_info.name)
+						return false
+					end
+				else
+					if not install_binary(dep_info.name, true) then
+						print("✗ Failed to install dependency: " .. dep_info.name)
+						return false
+					end
 				end
 			end
 		end
@@ -625,6 +661,7 @@ local function build_from_source(pkg_name, skip_deps)
 	save_db(db)
 
 	print("\n✓ " .. pkg_name .. " built and installed successfully")
+	CURRENT_SOURCE_BASE_DIR = nil
 	return true
 end
 
