@@ -117,6 +117,16 @@ local function ensure_dirs()
 	os.execute("mkdir -p " .. os.getenv("HOME") .. "/.config/pkglet")
 end
 
+local function resolve_path(path)
+	local f = io.popen("realpath " .. shell_escape(path))
+	if f then
+		local full_path = f:read("*a")
+		f:close()
+		return full_path:gsub("s+$", ""):match("^%s*(.-)%s*$")
+	end
+	return path
+end
+
 local function load_config()
 	local f = io.open(CONFIG_FILE, "r")
 	if not f then
@@ -665,7 +675,7 @@ local function upgrade_packages()
 end
 
 local function show_help()
-	print([[pkglet - The package manager for NULLOS
+	print([[pkglet - The package manager for NULL GNU/Linux
 Version ]] .. VERSION .. [[
 
 
@@ -737,6 +747,7 @@ local function main(args)
 			if ROOT:sub(-1) == "/" then
 				ROOT = ROOT:sub(1, -2)
 			end
+			ROOT = resolve_path(ROOT)
 			print("Bootstrap mode (no-init): " .. ROOT)
 			os.execute("mkdir -p " .. ROOT)
 		elseif arg:match("^%-b=") then
@@ -744,6 +755,7 @@ local function main(args)
 			if ROOT:sub(-1) == "/" then
 				ROOT = ROOT:sub(1, -2)
 			end
+			ROOT = resolve_path(ROOT)
 			print("Bootstrap mode: " .. ROOT)
 			os.execute("mkdir -p " .. ROOT)
 			init_filesystem(ROOT)
