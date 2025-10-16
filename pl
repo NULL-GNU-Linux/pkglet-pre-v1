@@ -675,7 +675,7 @@ local function upgrade_packages()
 end
 
 local function show_help()
-	print([[pkglet - The package manager for NULL GNU/Linux
+	print([[pkglet - The hybrid package manager for NULL GNU/Linux
 Version ]] .. VERSION .. [[
 
 
@@ -694,7 +694,7 @@ Examples:
   pl com.example.hello
   pl b/xyz.obsidianos.obsidianctl
   pl b/com.example.pkg1 com.example.pkg2
-  pl -b=/mnt com.example.base b/sys.core.kernel
+  pl -b=/mnt com.example.base b/org.kernel.linux b/org.lua.lua
 
 Bootstrap mode installs packages to the specified directory instead of /
 Useful for installing a fresh system to a new partition or chroot.
