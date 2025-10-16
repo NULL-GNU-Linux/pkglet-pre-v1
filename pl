@@ -172,6 +172,11 @@ local function load_db()
 	local db_file = get_db_file()
 	local f = io.open(db_file, "r")
 	if not f then
+		local f_write = io.open(db_file, "w")
+		if f_write then
+			f_write:write("{\n}\n")
+			f_write:close()
+		end
 		return {}
 	end
 	local content = f:read("*all")
@@ -462,7 +467,10 @@ local function load_package(pkg_path)
 		error("Failed to load package file: " .. pkg_path)
 	end
 	chunk()
-	return env.pkg
+	for k, v in pairs(env.pkg) do
+		pkg[k] = v
+	end
+	return pkg
 end
 
 local function is_installed(pkg_name)
