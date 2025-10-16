@@ -44,7 +44,6 @@ local function init_filesystem(root)
 	local dirs = {
 		"/usr",
 		"/usr/bin",
-		"/usr/sbin",
 		"/usr/lib",
 		"/usr/lib64",
 		"/usr/local",
@@ -83,7 +82,7 @@ local function init_filesystem(root)
 
 	print("Creating essential symlinks...")
 	os.execute("ln -sf usr/bin " .. root .. "/bin 2>/dev/null")
-	os.execute("ln -sf usr/sbin " .. root .. "/sbin 2>/dev/null")
+	os.execute("ln -sf usr/bin " .. root .. "/sbin 2>/dev/null")
 	os.execute("ln -sf usr/lib " .. root .. "/lib 2>/dev/null")
 	os.execute("ln -sf usr/lib64 " .. root .. "/lib64 2>/dev/null")
 
