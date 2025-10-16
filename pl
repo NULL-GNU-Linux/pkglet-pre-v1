@@ -86,6 +86,27 @@ local function init_filesystem(root)
 	os.execute("ln -sf usr/lib " .. root .. "/lib 2>/dev/null")
 	os.execute("ln -sf usr/lib64 " .. root .. "/lib64 2>/dev/null")
 
+	print("Creating /etc/passwd and /etc/shadow...")
+	os.execute("echo 'root:x:0:0:root:/root:/bin/bash' > " .. root .. "/etc/passwd")
+	os.execute("echo 'root:!:18800:0:99999:7:::' > " .. root .. "/etc/shadow")
+
+	print("Creating /etc/os-release...")
+	os.execute("echo 'NAME=\"NULL GNU/Linux\"' > " .. root .. "/etc/os-release")
+	os.execute("echo 'PRETTY_NAME=\"NULL GNU/Linux\"' >> " .. root .. "/etc/os-release")
+	os.execute("echo 'ID=nullos' >> " .. root .. "/etc/os-release")
+	os.execute("echo 'BUILD_ID=rolling' >> " .. root .. "/etc/os-release")
+	os.execute("echo 'ANSI_COLOR=\"38;2;138;43;226\"' >> " .. root .. "/etc/os-release")
+	os.execute("echo 'HOME_URL=\"https://github.com/NULL-GNU-Linux\"' >> " .. root .. "/etc/os-release")
+	os.execute("echo 'DOCUMENTATION_URL=\"https://github.com/NULL-GNU-Linux\"' >> " .. root .. "/etc/os-release")
+	os.execute(
+		"echo 'SUPPORT_URL=\"https://github.com/orgs/NULL-GNU-Linux/discussions\"' >> " .. root .. "/etc/os-release"
+	)
+	os.execute(
+		"echo 'BUG_REPORT_URL=\"https://github.com/orgs/NULL-GNU-Linux/discussions\"' >> " .. root .. "/etc/os-release"
+	)
+	os.execute("echo 'PRIVACY_POLICY_URL=\"no-data-collection\"' >> " .. root .. "/etc/os-release")
+	os.execute("echo 'LOGO=nullos' >> " .. root .. "/etc/os-release")
+
 	print("✓ Filesystem initialized")
 end
 
