@@ -127,6 +127,8 @@ local function resolve_path(path)
 	return path
 end
 
+local save_config
+
 local function load_config()
 	local f = io.open(CONFIG_FILE, "r")
 	if not f then
@@ -146,7 +148,7 @@ local function load_config()
 	return dofile(CONFIG_FILE)
 end
 
-local function save_config(config)
+save_config = function(config)
 	local f = io.open(CONFIG_FILE, "w")
 	f:write("config = {\n")
 	f:write("        repos = {\n")
