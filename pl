@@ -837,6 +837,7 @@ local function main(args)
 			if pkg_full_name:match("^b/") then
 				build = true
 				pkg_full_name = pkg_full_name:sub(3)
+				pkg_name = pkg_full_name
 			end
 
 			local name_match, options_match = pkg_full_name:match("^(.-){(.*)}$")
