@@ -1,6 +1,6 @@
 # pkglet
 
-`pkglet` (executed via the `pl` command) is a hybrid package manager designed for NULL GNU/Linux. It provides a flexiblity for managing packages, supporting both binary and source-based installations.
+`pkglet` (executed via the `pl` command) is a hybrid package manager designed for NULL GNU/Linux. It provides flexiblity for managing packages, supporting both binary and source-based installations.
 
 ## Features
 
