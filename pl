@@ -86,9 +86,10 @@ local function init_filesystem(root)
 	os.execute("ln -sf usr/lib " .. root .. "/lib 2>/dev/null")
 	os.execute("ln -sf usr/lib64 " .. root .. "/lib64 2>/dev/null")
 
-	print("Creating /etc/passwd and /etc/shadow...")
+	print("Creating /etc/passwd and /etc/shadow and /etc/hostname...")
 	os.execute("echo 'root:x:0:0:root:/root:/bin/bash' > " .. root .. "/etc/passwd")
 	os.execute("echo 'root:!:18800:0:99999:7:::' > " .. root .. "/etc/shadow")
+	os.execute("echo 'null' > " .. root .. "/etc/hostname")
 
 	print("Creating /etc/os-release...")
 	os.execute("echo 'NAME=\"NULL GNU/Linux\"' > " .. root .. "/etc/os-release")
