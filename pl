@@ -305,7 +305,7 @@ local function create_hook_system()
 	end, hooks
 end
 
-local function load_package(pkg_path)
+local function load_package(pkg_path, options_str)
 	local pkg = {}
 	pkg.files = {}
 
@@ -440,6 +440,17 @@ local function load_package(pkg_path)
 		return full_dest_path
 	end
 
+	local options = {}
+	if options_str and options_str ~= "{}" then
+		local success, parsed_options = pcall(load, "return " .. options_str)
+		if success then
+			options = parsed_options()
+		else
+			print("Warning: Failed to parse options string: " .. options_str)
+			options = {}
+		end
+	end
+
 	local env = {
 		os = os,
 		io = io,
@@ -460,6 +471,7 @@ local function load_package(pkg_path)
 		gitclone = gitclone,
 		wget = wget,
 		curl = curl,
+		OPTIONS = options,
 	}
 	setmetatable(env, { __index = _G })
 
@@ -479,7 +491,7 @@ local function is_installed(pkg_name)
 	return db[pkg_name] ~= nil
 end
 
-local function resolve_dependencies(pkg, visited)
+local function resolve_dependencies(pkg, visited, parent_options_str)
 	visited = visited or {}
 	local to_install = {}
 
@@ -487,25 +499,34 @@ local function resolve_dependencies(pkg, visited)
 		return to_install
 	end
 
-	for _, dep in ipairs(pkg.depends) do
+	for _, dep_full_name in ipairs(pkg.depends) do
 		local build = false
-		if dep:match("^b/") then
-			dep = dep:sub(3)
+		local dep_name = dep_full_name
+		local dep_options_str = parent_options_str or "{}"
+
+		if dep_full_name:match("^b/") then
 			build = true
+			dep_name = dep_full_name:sub(3)
 		end
 
-		if not visited[dep] and not is_installed(dep) then
-			visited[dep] = true
-			local dep_path = find_package(dep)
+		local name_match, options_match = dep_name:match("^(.-){(.*)}$")
+		if name_match and options_match then
+			dep_name = name_match
+			dep_options_str = "{" .. options_match .. "}"
+		end
+
+		if not visited[dep_name] and not is_installed(dep_name) then
+			visited[dep_name] = true
+			local dep_path = find_package(dep_name)
 			if dep_path then
-				local dep_pkg = load_package(dep_path)
-				local sub_deps = resolve_dependencies(dep_pkg, visited)
+				local dep_pkg = load_package(dep_path, dep_options_str)
+				local sub_deps = resolve_dependencies(dep_pkg, visited, dep_options_str)
 				for _, sub_dep in ipairs(sub_deps) do
 					table.insert(to_install, sub_dep)
 				end
-				table.insert(to_install, { name = dep, build = build })
+				table.insert(to_install, { name = dep_name, build = build, options = dep_options_str })
 			else
-				print("⚠ Warning: Dependency not found: " .. dep)
+				print("⚠ Warning: Dependency not found: " .. dep_name)
 			end
 		end
 	end
@@ -515,14 +536,14 @@ end
 
 local build_from_source
 
-local function install_binary(pkg_name, skip_deps)
+local function install_binary(pkg_name, skip_deps, options_str)
 	local pkg_path, repo_name = find_package(pkg_name)
 	if not pkg_path then
 		print("✗ Package not found: " .. pkg_name)
 		return false
 	end
 
-	local pkg = load_package(pkg_path)
+	local pkg = load_package(pkg_path, options_str)
 
 	if not skip_deps then
 		local deps = resolve_dependencies(pkg)
@@ -535,17 +556,17 @@ local function install_binary(pkg_name, skip_deps)
 
 			for _, dep_info in ipairs(deps) do
 				if dep_info.build then
-					if not build_from_source(dep_info.name, true) then
+					if not build_from_source(dep_info.name, true, dep_info.options) then
 						print("✗ Failed to build dependency: " .. dep_info.name)
 						return false
 					end
 				else
-					if not install_binary(dep_info.name, true) then
+					if not install_binary(dep_info.name, true, dep_info.options) then
 						print("✗ Failed to install dependency: " .. dep_info.name)
 						return false
 					end
 				end
-			end
+		end
 		end
 	end
 
@@ -593,14 +614,14 @@ local function install_binary(pkg_name, skip_deps)
 	return true
 end
 
-build_from_source = function(pkg_name, skip_deps)
+build_from_source = function(pkg_name, skip_deps, options_str)
 	local pkg_path, repo_name = find_package(pkg_name)
 	if not pkg_path then
 		print("✗ Package not found: " .. pkg_name)
 		return false
 	end
 
-	local pkg = load_package(pkg_path)
+	local pkg = load_package(pkg_path, options_str)
 
 	if not skip_deps then
 		local deps = resolve_dependencies(pkg)
@@ -613,12 +634,12 @@ build_from_source = function(pkg_name, skip_deps)
 
 			for _, dep_info in ipairs(deps) do
 				if dep_info.build then
-					if not build_from_source(dep_info.name, true) then
+					if not build_from_source(dep_info.name, true, dep_info.options) then
 						print("✗ Failed to build dependency: " .. dep_info.name)
 						return false
 					end
 				else
-					if not install_binary(dep_info.name, true) then
+					if not install_binary(dep_info.name, true, dep_info.options) then
 						print("✗ Failed to install dependency: " .. dep_info.name)
 						return false
 					end
@@ -807,11 +828,27 @@ local function main(args)
 			print("Bootstrap mode: " .. ROOT)
 			os.execute("mkdir -p " .. ROOT)
 			init_filesystem(ROOT)
-		elseif arg:match("^b/") then
-			build_mode = true
-			table.insert(packages, arg:sub(3))
-		elseif not arg:match("^%-") then
-			table.insert(packages, arg)
+		else
+			local pkg_full_name = arg
+			local pkg_name = arg
+			local pkg_options_str = "{}"
+			local build = false
+
+			if pkg_full_name:match("^b/") then
+				build = true
+				pkg_full_name = pkg_full_name:sub(3)
+			end
+
+			local name_match, options_match = pkg_full_name:match("^(.-){(.*)}$")
+			if name_match and options_match then
+				pkg_name = name_match
+				pkg_options_str = "{" .. options_match .. "}"
+			end
+
+			if not arg:match("^%-") then
+				table.insert(packages, {name = pkg_name, build = build, options = pkg_options_str})
+				if build then build_mode = true end
+			end
 		end
 	end
 
@@ -820,11 +857,11 @@ local function main(args)
 		return
 	end
 
-	for _, pkg_name in ipairs(packages) do
-		if build_mode then
-			build_from_source(pkg_name)
+	for _, pkg_info in ipairs(packages) do
+		if pkg_info.build then
+			build_from_source(pkg_info.name, false, pkg_info.options)
 		else
-			install_binary(pkg_name)
+			install_binary(pkg_info.name, false, pkg_info.options)
 		end
 	end
 end
