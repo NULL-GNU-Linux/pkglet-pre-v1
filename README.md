@@ -16,8 +16,8 @@ The primary command-line interface for `pkglet` is `pl`.
 
 ```
 Usage:
-  pl <package>                Install package (binary)
-  pl b/<package> [...]        Build package(s) from source
+  pl <package>{option=value}  Install package with Lua table options
+  pl b/<package>{option=value} [...] Build package(s) from source with Lua table options
   pl u                        Update repositories
   pl uu                       Upgrade installed packages
   pl l                        List installed packages
@@ -29,9 +29,9 @@ Usage:
 
 ### Examples
 
-*   **Install a binary package:**
+*   **Install a package with Lua table options (e.g., build from git):**
     ```bash
-    pl com.example.hello
+    pl b/org.kernel.linux{use_git=true}
     ```
 *   **Build a package from source:**
     ```bash
