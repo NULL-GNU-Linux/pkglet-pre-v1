@@ -25,7 +25,29 @@ local CACHE_DIR = os.getenv("HOME") .. "/.cache/pkglet"
 local DB_FILE = os.getenv("HOME") .. "/.local/share/pkglet/installed.db"
 local CONFIG_FILE = os.getenv("HOME") .. "/.config/pkglet/config.lua"
 local CURRENT_SOURCE_BASE_DIR = nil
-
+local COLOR_RESET = "\027[0m"
+local COLOR_RED = "\027[31m"
+local COLOR_GREEN = "\027[32m"
+local COLOR_YELLOW = "\027[33m"
+local COLOR_BLUE = "\027[34m"
+local COLOR_MAGENTA = "\027[35m"
+local COLOR_CYAN = "\027[36m"
+local COLOR_WHITE = "\027[37m"
+local COLOR_BRIGHT_BLACK = "\027[90m"
+local COLOR_BRIGHT_RED = "\027[91m"
+local COLOR_BRIGHT_GREEN = "\027[92m"
+local COLOR_BRIGHT_YELLOW = "\027[93m"
+local COLOR_BRIGHT_BLUE = "\027[94m"
+local COLOR_BRIGHT_MAGENTA = "\027[95m"
+local COLOR_BRIGHT_CYAN = "\027[96m"
+local COLOR_BRIGHT_WHITE = "\027[97m"
+local function truncate(str, max)
+	if #str > max then
+		return string.sub(str, 1, max - 3) .. "..."
+	else
+		return str
+	end
+end
 local function shell_escape(s)
 	return "'" .. s:gsub("'", "'" .. "\\" .. "'" .. "'") .. "'"
 end
@@ -75,23 +97,21 @@ local function init_filesystem(root)
 		"/media",
 	}
 
-	print("Initializing filesystem at " .. root .. "...")
+	print(COLOR_BRIGHT_BLUE .. "Initializing filesystem at " .. root .. "..." .. COLOR_RESET)
 	for _, dir in ipairs(dirs) do
 		os.execute("mkdir -p " .. root .. dir)
 	end
 
-	print("Creating essential symlinks...")
+	print(COLOR_BRIGHT_BLUE .. "Creating essential symlinks..." .. COLOR_RESET)
 	os.execute("ln -sf usr/bin " .. root .. "/bin 2>/dev/null")
 	os.execute("ln -sf usr/bin " .. root .. "/sbin 2>/dev/null")
 	os.execute("ln -sf usr/lib " .. root .. "/lib 2>/dev/null")
 	os.execute("ln -sf usr/lib64 " .. root .. "/lib64 2>/dev/null")
-
-	print("Creating /etc/passwd and /etc/shadow and /etc/hostname...")
+	print(COLOR_BRIGHT_BLUE .. "Creating /etc/passwd and /etc/shadow and /etc/hostname..." .. COLOR_RESET)
 	os.execute("echo 'root:x:0:0:root:/root:/bin/bash' > " .. root .. "/etc/passwd")
 	os.execute("echo 'root:!:18800:0:99999:7:::' > " .. root .. "/etc/shadow")
 	os.execute("echo 'null' > " .. root .. "/etc/hostname")
-
-	print("Creating /etc/os-release...")
+	print(COLOR_BRIGHT_BLUE .. "Creating /etc/os-release..." .. COLOR_RESET)
 	os.execute("echo 'NAME=\"NULL GNU/Linux\"' > " .. root .. "/etc/os-release")
 	os.execute("echo 'PRETTY_NAME=\"NULL GNU/Linux\"' >> " .. root .. "/etc/os-release")
 	os.execute("echo 'ID=nullos' >> " .. root .. "/etc/os-release")
@@ -107,8 +127,7 @@ local function init_filesystem(root)
 	)
 	os.execute("echo 'PRIVACY_POLICY_URL=\"no-data-collection\"' >> " .. root .. "/etc/os-release")
 	os.execute("echo 'LOGO=nullos' >> " .. root .. "/etc/os-release")
-
-	print("✓ Filesystem initialized")
+	print(COLOR_GREEN .. "✓ Filesystem initialized" .. COLOR_RESET)
 end
 
 local function ensure_dirs()
@@ -129,7 +148,6 @@ local function resolve_path(path)
 end
 
 local save_config
-
 local function load_config()
 	local f = io.open(CONFIG_FILE, "r")
 	if not f then
@@ -207,52 +225,50 @@ local function save_db(db)
 end
 local function update_repos()
 	local config = load_config()
-	print("Updating repositories...")
+	print(COLOR_BRIGHT_BLUE .. "Updating repositories..." .. COLOR_RESET)
 	for _, repo in ipairs(config.repos) do
-		print("\n→ " .. repo.name)
+		print(COLOR_BRIGHT_CYAN .. "\n→ " .. repo.name .. COLOR_RESET)
 		local repo_path = REPO_DIR .. "/" .. repo.name
 		if os.execute("test -d " .. repo_path) then
-			print("  Pulling updates...")
+			print(COLOR_BLUE .. "  Pulling updates..." .. COLOR_RESET)
 			os.execute("cd " .. repo_path .. " && git pull -q")
 		else
-			print("  Cloning repository...")
+			print(COLOR_BLUE .. "  Cloning repository..." .. COLOR_RESET)
 			os.execute("git clone -q " .. repo.url .. " " .. repo_path)
 		end
 	end
-	print("\n✓ Repositories updated")
+	print(COLOR_GREEN .. "\n✓ Repositories updated" .. COLOR_RESET)
 end
 
 local function add_and_update_repo(repo_source)
-	print("Adding repository from " .. repo_source .. "...")
+	print(COLOR_BRIGHT_BLUE .. "Adding repository from " .. repo_source .. "..." .. COLOR_RESET)
 	local repo_content = ""
-
 	if repo_source:match("^https?://") then
 		local handle = io.popen("curl -sL " .. repo_source)
 		repo_content = handle:read("*all")
 		handle:close()
 		if repo_content == "" then
-			print("✗ Failed to fetch repo.lua from URL: " .. repo_source)
+			print(COLOR_RED .. "✗ Failed to fetch repo.lua from URL: " .. repo_source .. COLOR_RESET)
 			return
 		end
 	else
 		local f = io.open(repo_source, "r")
 		if not f then
-			print("✗ Failed to open repo.lua file: " .. repo_source)
+			print(COLOR_RED .. "✗ Failed to open repo.lua file: " .. repo_source .. COLOR_RESET)
 			return
 		end
 		repo_content = f:read("*all")
 		f:close()
 	end
-
 	local new_repo_func = load(repo_content)
 	if not new_repo_func then
-		print("✗ Failed to parse repo.lua content.")
+		print(COLOR_RED .. "✗ Failed to parse repo.lua content." .. COLOR_RESET)
 		return
 	end
 
 	local new_repo = new_repo_func()
 	if not new_repo or not new_repo.name or not new_repo.url or not new_repo.description then
-		print("✗ Invalid repo.lua format. Missing name, url, or description.")
+		print(COLOR_RED .. "✗ Invalid repo.lua format. Missing name, url, or description." .. COLOR_RESET)
 		return
 	end
 
@@ -262,7 +278,11 @@ local function add_and_update_repo(repo_source)
 		if repo.name == new_repo.name then
 			repo_exists = true
 			print(
-				"⚠ Repository with name '" .. new_repo.name .. "' already exists. Updating its URL and description."
+				COLOR_YELLOW
+					.. "⚠ Repository with name '"
+					.. new_repo.name
+					.. "' already exists. Updating its URL and description."
+					.. COLOR_RESET
 			)
 			repo.url = new_repo.url
 			repo.description = new_repo.description
@@ -272,12 +292,12 @@ local function add_and_update_repo(repo_source)
 
 	if not repo_exists then
 		table.insert(config.repos, new_repo)
-		print("✓ Added new repository: " .. new_repo.name)
+		print(COLOR_GREEN .. "✓ Added new repository: " .. new_repo.name .. COLOR_RESET)
 	end
 
 	save_config(config)
 	update_repos()
-	print("✓ Repository added and updated successfully.")
+	print(COLOR_GREEN .. "✓ Repository added and updated successfully." .. COLOR_RESET)
 end
 
 local function find_package(pkg_name)
@@ -286,7 +306,6 @@ local function find_package(pkg_name)
 		local repo_path = REPO_DIR .. "/" .. repo.name
 		local pkg_file = pkg_name:gsub("%.", "/") .. ".lua"
 		local pkg_path = repo_path .. "/" .. pkg_file
-
 		local f = io.open(pkg_path, "r")
 		if f then
 			f:close()
@@ -308,7 +327,6 @@ end
 local function load_package(pkg_path, options_str)
 	local pkg = {}
 	pkg.files = {}
-
 	local function install(source_path, destination_path, permissions)
 		local full_dest_path = (ROOT or "") .. destination_path
 		local base_source_dir = CURRENT_SOURCE_BASE_DIR or pkg_path:match("(.*)/[^/]+$")
@@ -474,7 +492,6 @@ local function load_package(pkg_path, options_str)
 		OPTIONS = options,
 	}
 	setmetatable(env, { __index = _G })
-
 	local chunk = loadfile(pkg_path, "t", env)
 	if not chunk then
 		error("Failed to load package file: " .. pkg_path)
@@ -494,16 +511,13 @@ end
 local function resolve_dependencies(pkg, visited, parent_options_str)
 	visited = visited or {}
 	local to_install = {}
-
 	if not pkg.depends then
 		return to_install
 	end
-
 	for _, dep_full_name in ipairs(pkg.depends) do
 		local build = false
 		local dep_name = dep_full_name
 		local dep_options_str = parent_options_str or "{}"
-
 		if dep_full_name:match("^b/") then
 			build = true
 			dep_name = dep_full_name:sub(3)
@@ -539,108 +553,100 @@ local build_from_source
 local function install_binary(pkg_name, skip_deps, options_str)
 	local pkg_path, repo_name = find_package(pkg_name)
 	if not pkg_path then
-		print("✗ Package not found: " .. pkg_name)
+		print(COLOR_RED .. "✗ Package not found: " .. pkg_name .. COLOR_RESET)
 		return false
 	end
 
 	local pkg = load_package(pkg_path, options_str)
-
 	if not skip_deps then
 		local deps = resolve_dependencies(pkg)
 		if #deps > 0 then
-			print("\nResolving dependencies for " .. pkg_name .. ":")
+			print(COLOR_BRIGHT_BLUE .. "\nResolving dependencies for " .. pkg_name .. ":" .. COLOR_RESET)
 			for _, dep in ipairs(deps) do
-				print("  → " .. dep.name)
+				print(COLOR_BLUE .. "  → " .. dep.name .. COLOR_RESET)
 			end
 			print("")
-
 			for _, dep_info in ipairs(deps) do
 				if dep_info.build then
 					if not build_from_source(dep_info.name, true, dep_info.options) then
-						print("✗ Failed to build dependency: " .. dep_info.name)
+						print(COLOR_RED .. "✗ Failed to build dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
 				else
 					if not install_binary(dep_info.name, true, dep_info.options) then
-						print("✗ Failed to install dependency: " .. dep_info.name)
+						print(COLOR_RED .. "✗ Failed to install dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
 				end
+			end
 		end
+
+		local mode_str = ROOT ~= "" and " (binary, root=" .. ROOT .. ")" or " (binary)"
+		print(COLOR_BRIGHT_BLUE .. "Installing " .. pkg_name .. mode_str .. "..." .. COLOR_RESET)
+		local build_dir = CACHE_DIR .. "/build/" .. pkg.name
+		os.execute("rm -rf " .. build_dir)
+		os.execute("mkdir -p " .. build_dir)
+		CURRENT_SOURCE_BASE_DIR = build_dir
+		if not pkg.binary then
+			print(COLOR_RED .. "✗ Package does not support binary installation" .. COLOR_RESET)
+			CURRENT_SOURCE_BASE_DIR = nil
+			return false
 		end
-	end
 
-	local mode_str = ROOT ~= "" and " (binary, root=" .. ROOT .. ")" or " (binary)"
-	print("Installing " .. pkg_name .. mode_str .. "...")
+		local hook, hooks = create_hook_system()
+		pkg.binary()(hook)
 
-	local build_dir = CACHE_DIR .. "/build/" .. pkg.name
-	os.execute("rm -rf " .. build_dir)
-	os.execute("mkdir -p " .. build_dir)
+		if hooks.prepare then
+			hooks.prepare()
+		end
 
-	CURRENT_SOURCE_BASE_DIR = build_dir
+		if hooks.pre_install then
+			hooks.pre_install()
+		end
+		if hooks.install then
+			hooks.install()
+		end
+		if hooks.post_install then
+			hooks.post_install()
+		end
 
-	if not pkg.binary then
-		print("✗ Package does not support binary installation")
+		local db = load_db()
+		db[pkg.name] = {
+			version = pkg.version,
+			files = pkg.files or {},
+		}
+		save_db(db)
+
+		print(COLOR_GREEN .. "\n✓ " .. pkg_name .. " installed successfully" .. COLOR_RESET)
 		CURRENT_SOURCE_BASE_DIR = nil
-		return false
+		return true
 	end
-
-	local hook, hooks = create_hook_system()
-	pkg.binary()(hook)
-
-	if hooks.prepare then
-		hooks.prepare()
-	end
-
-	if hooks.pre_install then
-		hooks.pre_install()
-	end
-	if hooks.install then
-		hooks.install()
-	end
-	if hooks.post_install then
-		hooks.post_install()
-	end
-
-	local db = load_db()
-	db[pkg.name] = {
-		version = pkg.version,
-		files = pkg.files or {},
-	}
-	save_db(db)
-
-	print("\n✓ " .. pkg_name .. " installed successfully")
-	CURRENT_SOURCE_BASE_DIR = nil
-	return true
 end
-
 build_from_source = function(pkg_name, skip_deps, options_str)
 	local pkg_path, repo_name = find_package(pkg_name)
 	if not pkg_path then
-		print("✗ Package not found: " .. pkg_name)
+		print(COLOR_RED .. "✗ Package not found: " .. pkg_name .. COLOR_RESET)
 		return false
 	end
 
 	local pkg = load_package(pkg_path, options_str)
-
 	if not skip_deps then
 		local deps = resolve_dependencies(pkg)
 		if #deps > 0 then
-			print("\nResolving dependencies for " .. pkg_name .. ":")
+			print(COLOR_BRIGHT_BLUE .. "\nResolving dependencies for " .. pkg_name .. ":" .. COLOR_RESET)
 			for _, dep in ipairs(deps) do
-				print("  → " .. dep.name)
+				print(COLOR_BLUE .. "  → " .. dep.name .. COLOR_RESET)
 			end
 			print("")
-
 			for _, dep_info in ipairs(deps) do
 				if dep_info.build then
 					if not build_from_source(dep_info.name, true, dep_info.options) then
-						print("✗ Failed to build dependency: " .. dep_info.name)
+						print(COLOR_RED .. "✗ Failed to build dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
 				else
 					if not install_binary(dep_info.name, true, dep_info.options) then
-						print("✗ Failed to install dependency: " .. dep_info.name)
+						print(COLOR_RED .. "✗ Failed to install dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
 				end
@@ -649,25 +655,20 @@ build_from_source = function(pkg_name, skip_deps, options_str)
 	end
 
 	local mode_str = ROOT ~= "" and " from source (root=" .. ROOT .. ")" or " from source"
-	print("Building " .. pkg_name .. mode_str .. "...")
-
+	print(COLOR_BRIGHT_BLUE .. "Building " .. pkg_name .. mode_str .. "..." .. COLOR_RESET)
 	if not pkg.source then
-		print("✗ Package does not support source installation")
+		print(COLOR_RED .. "✗ Package does not support source installation" .. COLOR_RESET)
 		return false
 	end
 
 	local build_dir = CACHE_DIR .. "/build/" .. pkg.name
 	os.execute("rm -rf " .. build_dir)
 	os.execute("mkdir -p " .. build_dir)
-
 	local old_dir = os.getenv("PWD")
 	os.execute("cd " .. shell_escape(build_dir))
-
 	CURRENT_SOURCE_BASE_DIR = build_dir
-
 	local hook, hooks = create_hook_system()
 	pkg.source()(hook)
-
 	os.execute("cd " .. shell_escape(old_dir))
 	if hooks.prepare then
 		hooks.prepare()
@@ -691,8 +692,7 @@ build_from_source = function(pkg_name, skip_deps, options_str)
 		files = pkg.files or {},
 	}
 	save_db(db)
-
-	print("\n✓ " .. pkg_name .. " built and installed successfully")
+	print(COLOR_GREEN .. "\n✓ " .. pkg_name .. " built and installed successfully" .. COLOR_RESET)
 	CURRENT_SOURCE_BASE_DIR = nil
 	return true
 end
@@ -700,31 +700,29 @@ end
 local function list_installed()
 	local db = load_db()
 	local count = 0
-
-	print("Installed packages:\n")
+	print(COLOR_BRIGHT_BLUE .. "Installed packages:" .. COLOR_RESET .. "\n")
 	for pkg_name, info in pairs(db) do
-		print(string.format("  %s  %s", pkg_name, info.version))
+		print(string.format(COLOR_GREEN .. "  %s" .. COLOR_RESET .. "  %s", pkg_name, info.version))
 		count = count + 1
 	end
 
 	if count == 0 then
-		print("  (none)")
+		print(COLOR_YELLOW .. "  (none)" .. COLOR_RESET)
 	else
-		print("\nTotal: " .. count .. " package(s)")
+		print(COLOR_BRIGHT_BLUE .. "\nTotal: " .. count .. " package(s)" .. COLOR_RESET)
 	end
 end
 
 local function upgrade_packages()
 	local db = load_db()
 	local count = 0
-
-	print("Checking for upgrades...")
+	print(COLOR_BRIGHT_BLUE .. "Checking for upgrades..." .. COLOR_RESET)
 	for pkg_name, info in pairs(db) do
 		local pkg_path = find_package(pkg_name)
 		if pkg_path then
 			local pkg = load_package(pkg_path)
 			if pkg.version ~= info.version and pkg.version ~= "git" then
-				print("\n→ Upgrading " .. pkg_name .. ": " .. info.version .. " → " .. pkg.version)
+				print(COLOR_BRIGHT_CYAN .. "\n→ Upgrading " .. pkg_name .. ": " .. info.version .. " → " .. pkg.version .. COLOR_RESET)
 
 				if pkg.upgrade then
 					pkg.upgrade()(info.version)
@@ -737,9 +735,152 @@ local function upgrade_packages()
 	end
 
 	if count == 0 then
-		print("✓ All packages up to date")
+		print(COLOR_GREEN .. "✓ All packages up to date" .. COLOR_RESET)
 	else
-		print("\n✓ Upgraded " .. count .. " package(s)")
+		print(COLOR_GREEN .. "\n✓ Upgraded " .. count .. " package(s)" .. COLOR_RESET)
+	end
+end
+
+local function get_package_metadata(pkg_path)
+	local f = io.open(pkg_path, "r")
+	if not f then
+		return nil
+	end
+	local content = f:read("*all")
+	f:close()
+
+	local pkg = {}
+	local success, err = pcall(function()
+		local env = {
+			pkg = pkg,
+			print = function() end,
+			install = function() end,
+			symlink = function() end,
+			sh = function() end,
+			gitclone = function() end,
+			wget = function() end,
+			curl = function() end,
+			OPTIONS = {},
+		}
+		setmetatable(env, { __index = _G })
+		local chunk = load(content, "@" .. pkg_path, "t", env)
+		if chunk then
+			chunk()
+		end
+		pkg = env.pkg
+	end)
+
+	if not success then
+		print("Error loading package for metadata: " .. pkg_path .. " - " .. err)
+		return nil
+	end
+
+	if pkg.name then
+		return pkg
+	end
+	return nil
+end
+
+local function search_packages(search_term)
+	local config = load_config()
+	local results = {}
+	for _, repo in ipairs(config.repos) do
+		local repo_path = REPO_DIR .. "/" .. repo.name
+		for file in io.popen("find " .. shell_escape(repo_path) .. " -name '*.lua' 2>/dev/null"):lines() do
+			local pkg_metadata = get_package_metadata(file)
+			if pkg_metadata and pkg_metadata.name then
+				local match = false
+				if not search_term or search_term == "" then
+					match = true
+				else
+					local lower_search_term = search_term:lower()
+					if
+						pkg_metadata.name:lower():find(lower_search_term)
+						or (pkg_metadata.description and pkg_metadata.description:lower():find(lower_search_term))
+						or (pkg_metadata.maintainers and pkg_metadata.maintainers:lower():find(lower_search_term))
+					then
+						match = true
+					end
+				end
+
+				if match then
+					table.insert(results, {
+						repo = repo.name,
+						name = pkg_metadata.name,
+						version = pkg_metadata.version or "N/A",
+						description = pkg_metadata.description or "N/A",
+						maintainers = pkg_metadata.maintainer or "N/A",
+					})
+				end
+			end
+		end
+	end
+
+	if #results > 0 then
+		local max_repo = 6
+		local max_name = 10
+		local max_version = 9
+		local max_description = 20
+		local max_maintainers = 15
+		for _, pkg in ipairs(results) do
+			max_repo = math.max(max_repo, #pkg.repo)
+			max_name = math.max(max_name, math.min(30, #pkg.name))
+			max_version = math.max(max_version, #pkg.version)
+			max_description = math.max(max_description, math.min(50, #pkg.description))
+			max_maintainers = math.max(max_maintainers, #pkg.maintainers)
+		end
+		local header_format = COLOR_BRIGHT_CYAN
+			.. "%-"
+			.. max_repo
+			.. "s  %-"
+			.. max_name
+			.. "s  %-"
+			.. max_version
+			.. "s  %-"
+			.. max_description
+			.. "s  %-"
+			.. max_maintainers
+			.. "s"
+			.. COLOR_RESET
+		print(string.format(header_format, "Repo", "Name", "Version", "Description", "Maintainers"))
+		print(
+			COLOR_BRIGHT_BLACK
+				.. string.rep("─", max_repo)
+				.. "──"
+				.. string.rep("─", max_name)
+				.. "──"
+				.. string.rep("─", max_version)
+				.. "──"
+				.. string.rep("─", max_description)
+				.. "──"
+				.. string.rep("─", max_maintainers)
+				.. COLOR_RESET
+		)
+		for _, pkg in ipairs(results) do
+			local row_format = "%-"
+				.. max_repo
+				.. "s  %-"
+				.. max_name
+				.. "s  %-"
+				.. max_version
+				.. "s  %-"
+				.. max_description
+				.. "s  %-"
+				.. max_maintainers
+				.. "s"
+			print(
+				string.format(
+					row_format,
+					pkg.repo,
+					pkg.name,
+					pkg.version,
+					truncate(pkg.description, max_description),
+					pkg.maintainers
+				)
+			)
+		end
+	else
+		print("No packages found.")
 	end
 end
 
@@ -754,6 +895,7 @@ Usage:
   pl u                        Update repositories
   pl uu                       Upgrade installed packages
   pl l                        List installed packages
+  pl s [term]                 Search for packages
   pl -b=<path> <packages...>  Bootstrap mode (install to specified directory)
   pl -bn=<path> <packages...> Bootstrap mode without filesystem initialization
   pl -v, --version            Show version
@@ -774,17 +916,14 @@ end
 
 local function main(args)
 	ensure_dirs()
-
 	if #args == 0 or args[1] == "-h" or args[1] == "--help" then
 		show_help()
 		return
 	end
-
 	if args[1] == "-v" or args[1] == "--version" then
-		print("pkglet " .. VERSION)
+		print(COLOR_BRIGHT_GREEN .. "pkglet " .. VERSION .. COLOR_RESET)
 		return
 	end
-
 	if args[1] == "u" then
 		if args[2] then
 			add_and_update_repo(args[2])
@@ -793,21 +932,21 @@ local function main(args)
 		end
 		return
 	end
-
 	if args[1] == "uu" then
 		upgrade_packages()
 		return
 	end
-
 	if args[1] == "l" then
 		list_installed()
 		return
 	end
-
+	if args[1] == "s" then
+		search_packages(args[2])
+		return
+	end
 	local build_mode = false
 	local packages = {}
 	local skip_next = false
-
 	for i, arg in ipairs(args) do
 		if skip_next then
 			skip_next = false
@@ -817,7 +956,7 @@ local function main(args)
 				ROOT = ROOT:sub(1, -2)
 			end
 			ROOT = resolve_path(ROOT)
-			print("Bootstrap mode (no-init): " .. ROOT)
+			print(COLOR_BRIGHT_BLUE .. "Bootstrap mode (no-init): " .. ROOT .. COLOR_RESET)
 			os.execute("mkdir -p " .. ROOT)
 		elseif arg:match("^%-b=") then
 			ROOT = arg:match("^%-b=(.+)")
@@ -825,7 +964,7 @@ local function main(args)
 				ROOT = ROOT:sub(1, -2)
 			end
 			ROOT = resolve_path(ROOT)
-			print("Bootstrap mode: " .. ROOT)
+			print(COLOR_BRIGHT_BLUE .. "Bootstrap mode: " .. ROOT .. COLOR_RESET)
 			os.execute("mkdir -p " .. ROOT)
 			init_filesystem(ROOT)
 		else
@@ -833,31 +972,26 @@ local function main(args)
 			local pkg_name = arg
 			local pkg_options_str = "{}"
 			local build = false
-
 			if pkg_full_name:match("^b/") then
 				build = true
 				pkg_full_name = pkg_full_name:sub(3)
 				pkg_name = pkg_full_name
 			end
-
 			local name_match, options_match = pkg_full_name:match("^(.-){(.*)}$")
 			if name_match and options_match then
 				pkg_name = name_match
 				pkg_options_str = "{" .. options_match .. "}"
 			end
-
 			if not arg:match("^%-") then
 				table.insert(packages, {name = pkg_name, build = build, options = pkg_options_str})
 				if build then build_mode = true end
 			end
 		end
 	end
-
 	if #packages == 0 then
-		print("✗ No packages specified")
+		print(COLOR_RED .. "✗ No packages specified" .. COLOR_RESET)
 		return
 	end
-
 	for _, pkg_info in ipairs(packages) do
 		if pkg_info.build then
 			build_from_source(pkg_info.name, false, pkg_info.options)
@@ -866,5 +1000,4 @@ local function main(args)
 		end
 	end
 end
-
 main(arg)
