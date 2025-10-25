@@ -328,10 +328,19 @@ local function load_package(pkg_path, options_str)
 	local pkg = {}
 	pkg.files = {}
 	local function install(source_path, destination_path, permissions)
-		local full_dest_path = (ROOT or "") .. destination_path
+		local full_dest_path
+		if destination_path:sub(1, 1) == "/" then
+			full_dest_path = destination_path
+		else
+			full_dest_path = (ROOT or "") .. destination_path
+		end
 		local base_source_dir = CURRENT_SOURCE_BASE_DIR or pkg_path:match("(.*)/[^/]+$")
-		print(pkg.name)
-		local full_source_path = base_source_dir .. "/" .. source_path
+		local full_source_path
+		if source_path:sub(1, 1) == "/" then
+			full_source_path = source_path
+		else
+			full_source_path = base_source_dir .. "/" .. source_path
+		end
 		print("  Installing '" .. source_path .. "' to '" .. full_dest_path .. "'")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
@@ -351,7 +360,12 @@ local function load_package(pkg_path, options_str)
 	end
 
 	local function uninstall(destination_path)
-		local full_dest_path = (ROOT or "") .. destination_path
+		local full_dest_path
+		if destination_path:sub(1, 1) == "/" then
+			full_dest_path = destination_path
+		else
+			full_dest_path = (ROOT or "") .. destination_path
+		end
 		print("  Uninstalling '" .. full_dest_path .. "'")
 		local success = os.execute("rm -rf " .. shell_escape(full_dest_path))
 		if not success then
@@ -360,8 +374,18 @@ local function load_package(pkg_path, options_str)
 	end
 
 	local function symlink(source_path, destination_path)
-		local full_source_path = (ROOT or "") .. source_path
-		local full_dest_path = (ROOT or "") .. destination_path
+		local full_source_path
+		if source_path:sub(1, 1) == "/" then
+			full_source_path = source_path
+		else
+			full_source_path = (ROOT or "") .. source_path
+		end
+		local full_dest_path
+		if destination_path:sub(1, 1) == "/" then
+			full_dest_path = destination_path
+		else
+			full_dest_path = (ROOT or "") .. destination_path
+		end
 		print("  Symlinking '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
@@ -388,7 +412,12 @@ local function load_package(pkg_path, options_str)
 	end
 
 	local function gitclone(repo_url, destination_path)
-		local full_dest_path = (ROOT or "") .. destination_path
+		local full_dest_path
+		if destination_path:sub(1, 1) == "/" then
+			full_dest_path = destination_path
+		else
+			full_dest_path = (ROOT or "") .. destination_path
+		end
 		print("  Cloning git repository '" .. repo_url .. "' to '" .. full_dest_path .. "'")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
@@ -411,7 +440,12 @@ local function load_package(pkg_path, options_str)
 	end
 
 	local function wget(url, destination_path)
-		local full_dest_path = destination_path
+		local full_dest_path
+		if destination_path:sub(1, 1) == "/" then
+			full_dest_path = destination_path
+		else
+			full_dest_path = (ROOT or "") .. destination_path
+		end
 		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "'")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
@@ -435,7 +469,12 @@ local function load_package(pkg_path, options_str)
 	end
 
 	local function curl(url, destination_path)
-		local full_dest_path = destination_path
+		local full_dest_path
+		if destination_path:sub(1, 1) == "/" then
+			full_dest_path = destination_path
+		else
+			full_dest_path = (ROOT or "") .. destination_path
+		end
 		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "' using curl")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
