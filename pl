@@ -355,12 +355,7 @@ local function load_package(pkg_path, options_str)
 	end
 
 	local function uninstall(destination_path)
-		local full_dest_path
-		if destination_path:sub(1, 1) == "/" then
-			full_dest_path = destination_path
-		else
-			full_dest_path = (ROOT or "") .. destination_path
-		end
+		local full_dest_path = (ROOT or "") .. destination_path
 		print("  Uninstalling '" .. full_dest_path .. "'")
 		local success = os.execute("rm -rf " .. shell_escape(full_dest_path))
 		if not success then
@@ -375,11 +370,7 @@ local function load_package(pkg_path, options_str)
 		else
 			full_source_path = (ROOT or "") .. source_path
 		end
-		local full_dest_path
-		if destination_path:sub(1, 1) == "/" then
-			full_dest_path = destination_path
-		else
-			full_dest_path = (ROOT or "") .. destination_path
+		local full_dest_path = (ROOT or "") .. destination_path
 		end
 		print("  Symlinking '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
 		local parent_dir = dirname(full_dest_path)
