@@ -328,12 +328,7 @@ local function load_package(pkg_path, options_str)
 	local pkg = {}
 	pkg.files = {}
 	local function install(source_path, destination_path, permissions)
-		local full_dest_path
-		if destination_path:sub(1, 1) == "/" then
-			full_dest_path = destination_path
-		else
-			full_dest_path = (ROOT or "") .. destination_path
-		end
+		local full_dest_path = (ROOT or "") .. destination_path
 		local base_source_dir = CURRENT_SOURCE_BASE_DIR or pkg_path:match("(.*)/[^/]+$")
 		local full_source_path
 		if source_path:sub(1, 1) == "/" then
@@ -761,7 +756,16 @@ local function upgrade_packages()
 		if pkg_path then
 			local pkg = load_package(pkg_path)
 			if pkg.version ~= info.version and pkg.version ~= "git" then
-				print(COLOR_BRIGHT_CYAN .. "\n→ Upgrading " .. pkg_name .. ": " .. info.version .. " → " .. pkg.version .. COLOR_RESET)
+				print(
+					COLOR_BRIGHT_CYAN
+						.. "\n→ Upgrading "
+						.. pkg_name
+						.. ": "
+						.. info.version
+						.. " → "
+						.. pkg.version
+						.. COLOR_RESET
+				)
 
 				if pkg.upgrade then
 					pkg.upgrade()(info.version)
@@ -1022,8 +1026,10 @@ local function main(args)
 				pkg_options_str = "{" .. options_match .. "}"
 			end
 			if not arg:match("^%-") then
-				table.insert(packages, {name = pkg_name, build = build, options = pkg_options_str})
-				if build then build_mode = true end
+				table.insert(packages, { name = pkg_name, build = build, options = pkg_options_str })
+				if build then
+					build_mode = true
+				end
 			end
 		end
 	end
