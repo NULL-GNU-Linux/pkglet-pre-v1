@@ -371,7 +371,6 @@ local function load_package(pkg_path, options_str)
 			full_source_path = (ROOT or "") .. source_path
 		end
 		local full_dest_path = (ROOT or "") .. destination_path
-		end
 		print("  Symlinking '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
 		local parent_dir = dirname(full_dest_path)
 		if parent_dir ~= nil and parent_dir ~= "" then
