@@ -416,6 +416,17 @@ local function validate_options(defined_options, provided_options)
 	end
 	return validated
 end
+
+local function deep_merge_tables(t1, t2)
+	for k, v in pairs(t2) do
+		if type(v) == "table" and type(t1[k]) == "table" then
+			t1[k] = deep_merge_tables(t1[k], v)
+		else
+			t1[k] = v
+		end
+	end
+	return t1
+end
 local function load_package(pkg_path, options_str, is_graph_mode)
 	local pkg = {}
 	pkg.files = {}
@@ -636,6 +647,21 @@ local function load_package(pkg_path, options_str, is_graph_mode)
 		temp_chunk()
 	end
 
+	local current_pkg_definition = temp_pkg_options.pkg or {}
+	if current_pkg_definition.inherits then
+		local inherited_pkg_name = current_pkg_definition.inherits
+		local inherited_pkg_path = find_package(inherited_pkg_name)
+		if not inherited_pkg_path then
+			print_error("Inherited package not found: " .. inherited_pkg_name)
+			os.exit(1)
+		end
+		local inherited_pkg = load_package(inherited_pkg_path, options_str, is_graph_mode)
+		pkg = deep_merge_tables(pkg, inherited_pkg)
+		for _, file in ipairs(inherited_pkg.files) do
+			table.insert(pkg.files, file)
+		end
+	end
+	pkg = deep_merge_tables(pkg, current_pkg_definition)
 	if is_graph_mode and temp_pkg_options.pkg and temp_pkg_options.pkg.options then
 		for name, def in pairs(temp_pkg_options.pkg.options) do
 			if options[name] == nil then
