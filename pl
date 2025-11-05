@@ -430,6 +430,7 @@ end
 local function load_package(pkg_path, options_str, is_graph_mode)
 	local pkg = {}
 	pkg.files = {}
+	pkg.provides = {}
 	local function install(source_path, destination_path, permissions)
 		local full_dest_path = (ROOT or "") .. destination_path
 		local base_source_dir = CURRENT_SOURCE_BASE_DIR or pkg_path:match("(.*)/[^/]+$")
@@ -727,10 +728,76 @@ local function is_installed(pkg_name)
 	local db = load_db()
 	return db[pkg_name] ~= nil
 end
+local function get_package_metadata(pkg_path)
+	local f = io.open(pkg_path, "r")
+	if not f then
+		return nil
+	end
+	local content = f:read("*all")
+	f:close()
 
+	local pkg = {}
+	local success, err = pcall(function()
+		local env = {
+			pkg = pkg,
+			print = function() end,
+			install = function() end,
+			symlink = function() end,
+			sh = function() end,
+			gitclone = function() end,
+			wget = function() end,
+			curl = function() end,
+			dump = function() end,
+			ARCH = nil,
+			OPTIONS = {},
+		}
+		setmetatable(env, { __index = _G })
+		local chunk = load(content, "@" .. pkg_path, "t", env)
+		if chunk then
+			chunk()
+		end
+		pkg = env.pkg
+	end)
+
+	if not success then
+		print_error("Error loading package for metadata: " .. pkg_path .. " - " .. err)
+		return nil
+	end
+
+	if pkg.name then
+		return pkg
+	end
+	return nil
+end
+local function find_providing_packages(virtual_pkg_name)
+	local config = load_config()
+	local providers = {}
+	local unique_providers = {}
+	for _, repo in ipairs(config.repos) do
+		local repo_path = REPO_DIR .. "/" .. repo.name
+		for file in io.popen("find " .. shell_escape(repo_path) .. " -name '*.lua' 2>/dev/null"):lines() do
+			local pkg_metadata = get_package_metadata(file)
+			if pkg_metadata and pkg_metadata.provides then
+				for _, provided_name in ipairs(pkg_metadata.provides) do
+					if provided_name == virtual_pkg_name then
+						if not unique_providers[pkg_metadata.name] then
+							unique_providers[pkg_metadata.name] = true
+						end
+						break
+					end
+				end
+			end
+		end
+	end
+	for name, _ in pairs(unique_providers) do
+		table.insert(providers, name)
+	end
+	return providers
+end
 local function resolve_dependencies(pkg, visited, parent_options_str)
 	visited = visited or {}
 	local to_install = {}
+	local seen_packages = {}
 	if not pkg.depends then
 		return to_install
 	end
@@ -751,25 +818,83 @@ local function resolve_dependencies(pkg, visited, parent_options_str)
 
 		if not visited[dep_name] and not is_installed(dep_name) then
 			visited[dep_name] = true
+			local concrete_dep_name = dep_name
 			local dep_path = find_package(dep_name)
+			if not dep_path then
+				local providers = find_providing_packages(dep_name)
+				if #providers == 0 then
+					print_error("Dependency not found: " .. dep_name)
+					os.exit(1)
+				elseif #providers == 1 then
+					concrete_dep_name = providers[1]
+					print(
+						COLOR_BLUE
+							.. "  → Virtual package '"
+							.. dep_name
+							.. "' satisfied by '"
+							.. concrete_dep_name
+							.. "'"
+							.. COLOR_RESET
+					)
+				else
+					print(
+						COLOR_YELLOW
+							.. "Virtual package '"
+							.. dep_name
+							.. "' can be provided by multiple packages:"
+							.. COLOR_RESET
+					)
+					for i, provider in ipairs(providers) do
+						print(string.format("  %d. %s", i, provider))
+					end
+					io.stdout:write(COLOR_YELLOW .. "Choose one (enter number): " .. COLOR_RESET)
+					local choice = io.stdin:read("*line")
+					local choice_num = tonumber(choice)
+					if not choice_num or choice_num < 1 or choice_num > #providers then
+						print_error("Invalid choice.")
+						os.exit(1)
+					end
+					concrete_dep_name = providers[choice_num]
+					print(
+						COLOR_BLUE
+							.. "  → Selected '"
+							.. concrete_dep_name
+							.. "' to satisfy '"
+							.. dep_name
+							.. "'"
+							.. COLOR_RESET
+					)
+				end
+				dep_path = find_package(concrete_dep_name)
+				if not dep_path then
+					print_error("Failed to find concrete package: " .. concrete_dep_name)
+					os.exit(1)
+				end
+			end
+
 			if dep_path then
 				local dep_pkg = load_package(dep_path, dep_options_str)
 				local sub_deps = resolve_dependencies(dep_pkg, visited, dep_options_str)
 				for _, sub_dep in ipairs(sub_deps) do
-					table.insert(to_install, sub_dep)
+					if not seen_packages[sub_dep.name] then
+						table.insert(to_install, sub_dep)
+						seen_packages[sub_dep.name] = true
+					end
 				end
-				table.insert(to_install, { name = dep_name, build = build, options = dep_options_str })
+				if not seen_packages[concrete_dep_name] then
+					table.insert(to_install, { name = concrete_dep_name, build = build, options = dep_options_str })
+					seen_packages[concrete_dep_name] = true
+				end
 			else
-				print("⚠ Warning: Dependency not found: " .. dep_name)
+				print_error("Dependency not found: " .. dep_name)
+				os.exit(1)
 			end
 		end
 	end
 
 	return to_install
 end
-
 local build_from_source
-
 local function install_binary(pkg_name, skip_deps, options_str)
 	local pkg_path, repo_name = find_package(pkg_name)
 	if not pkg_path then
@@ -788,12 +913,12 @@ local function install_binary(pkg_name, skip_deps, options_str)
 			print("")
 			for _, dep_info in ipairs(deps) do
 				if dep_info.build then
-					if not build_from_source(dep_info.name, true, dep_info.options) then
+					if not build_from_source(dep_info.name, false, dep_info.options) then
 						print(COLOR_RED .. "✗ Failed to build dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
 				else
-					if not install_binary(dep_info.name, true, dep_info.options) then
+					if not install_binary(dep_info.name, false, dep_info.options) then
 						print(COLOR_RED .. "✗ Failed to install dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
@@ -829,14 +954,12 @@ local function install_binary(pkg_name, skip_deps, options_str)
 		run_hooks("pre_install")
 		run_hooks("install")
 		run_hooks("post_install")
-
 		local db = load_db()
 		db[pkg.name] = {
 			version = pkg.version,
 			files = pkg.files or {},
 		}
 		save_db(db)
-
 		print(COLOR_GREEN .. "\n✓ " .. pkg_name .. " installed successfully" .. COLOR_RESET)
 		CURRENT_SOURCE_BASE_DIR = nil
 		return true
@@ -860,12 +983,12 @@ build_from_source = function(pkg_name, skip_deps, options_str)
 			print("")
 			for _, dep_info in ipairs(deps) do
 				if dep_info.build then
-					if not build_from_source(dep_info.name, true, dep_info.options) then
+					if not build_from_source(dep_info.name, false, dep_info.options) then
 						print(COLOR_RED .. "✗ Failed to build dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
 				else
-					if not install_binary(dep_info.name, true, dep_info.options) then
+					if not install_binary(dep_info.name, false, dep_info.options) then
 						print(COLOR_RED .. "✗ Failed to install dependency: " .. dep_info.name .. COLOR_RESET)
 						return false
 					end
@@ -968,48 +1091,6 @@ local function upgrade_packages()
 	else
 		print(COLOR_GREEN .. "\n✓ Upgraded " .. count .. " package(s)" .. COLOR_RESET)
 	end
-end
-
-local function get_package_metadata(pkg_path)
-	local f = io.open(pkg_path, "r")
-	if not f then
-		return nil
-	end
-	local content = f:read("*all")
-	f:close()
-
-	local pkg = {}
-	local success, err = pcall(function()
-		local env = {
-			pkg = pkg,
-			print = function() end,
-			install = function() end,
-			symlink = function() end,
-			sh = function() end,
-			gitclone = function() end,
-			wget = function() end,
-			curl = function() end,
-			dump = function() end,
-			ARCH = nil,
-			OPTIONS = {},
-		}
-		setmetatable(env, { __index = _G })
-		local chunk = load(content, "@" .. pkg_path, "t", env)
-		if chunk then
-			chunk()
-		end
-		pkg = env.pkg
-	end)
-
-	if not success then
-		print_error("Error loading package for metadata: " .. pkg_path .. " - " .. err)
-		return nil
-	end
-
-	if pkg.name then
-		return pkg
-	end
-	return nil
 end
 
 local function search_packages(search_term)
