@@ -317,15 +317,31 @@ end
 
 local function create_hook_system()
 	local hooks = {}
-	return function(hook_name)
+	return function(hook_name, options)
 		return function(callback)
-			hooks[hook_name] = callback
+			if not hooks[hook_name] then
+				hooks[hook_name] = {}
+			end
+			table.insert(hooks[hook_name], { callback = callback, options = options or {} })
 		end
-	end, hooks
+	end,
+		hooks
 end
 
 local function print_error(message)
 	io.stderr:write(COLOR_RED .. "✗ Error: " .. message .. COLOR_RESET .. "\n")
+end
+
+local function evaluate_condition(condition, current_options)
+	if not condition then
+		return true
+	end
+	for key, value in pairs(condition) do
+		if current_options[key] ~= value then
+			return false
+		end
+	end
+	return true
 end
 
 local function validate_options(defined_options, provided_options)
@@ -351,10 +367,45 @@ local function validate_options(defined_options, provided_options)
 					print_error("Option '" .. name .. "' must be a string, got " .. typeof_value)
 					os.exit(1)
 				end
-			elseif def.type == "number" then				
+			elseif def.type == "number" then
 				if typeof_value ~= "number" then
 					print_error("Option '" .. name .. "' must be a number, got " .. typeof_value)
 					os.exit(1)
+				end
+				if def.min ~= nil and value < def.min then
+					print_error("Option '" .. name .. "' must be at least " .. def.min .. ", got " .. value)
+					os.exit(1)
+				end
+				if def.max ~= nil and value > def.max then
+					print_error("Option '" .. name .. "' must be at most " .. def.max .. ", got " .. value)
+					os.exit(1)
+				end
+			elseif def.type == "string" then
+				if typeof_value ~= "string" then
+					print_error("Option '" .. name .. "' must be a string, got " .. typeof_value)
+					os.exit(1)
+				end
+				if def.from ~= nil then
+					local found = false
+					for _, allowed_value in ipairs(def.from) do
+						if value == allowed_value then
+							found = true
+							break
+						end
+					end
+					if not found then
+						local allowed_values_str = table.concat(def.from, ", ")
+						print_error(
+							"Option '"
+								.. name
+								.. "' must be one of {"
+								.. allowed_values_str
+								.. "}, got '"
+								.. value
+								.. "'"
+						)
+						os.exit(1)
+					end
 				end
 			else
 				print_error("Unknown option type for '" .. name .. "': " .. def.type)
@@ -365,8 +416,7 @@ local function validate_options(defined_options, provided_options)
 	end
 	return validated
 end
-
-local function load_package(pkg_path, options_str)
+local function load_package(pkg_path, options_str, is_graph_mode)
 	local pkg = {}
 	pkg.files = {}
 	local function install(source_path, destination_path, permissions)
@@ -378,33 +428,38 @@ local function load_package(pkg_path, options_str)
 		else
 			full_source_path = base_source_dir .. "/" .. source_path
 		end
-		print("  Installing '" .. source_path .. "' to '" .. full_dest_path .. "'")
-		local parent_dir = dirname(full_dest_path)
-		if parent_dir ~= nil and parent_dir ~= "" then
-			os.execute("mkdir -p " .. shell_escape(parent_dir))
-		end
-		local success = os.execute("cp -r " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
-		if not success then
-			print_error("Failed to install '" .. source_path .. "'")
-		os.exit(1)
-		end
-		if permissions then
-			local chmod_success = os.execute("chmod " .. permissions .. " " .. shell_escape(full_dest_path))
-			if not chmod_success then
-				print_error("Failed to set permissions for \'" .. full_dest_path .. "\'")
-		os.exit(1)
+		if not is_graph_mode then
+			print("  Installing '" .. source_path .. "' to '" .. full_dest_path .. "'")
+			local parent_dir = dirname(full_dest_path)
+			if parent_dir ~= nil and parent_dir ~= "" then
+				os.execute("mkdir -p " .. shell_escape(parent_dir))
 			end
+			local success =
+				os.execute("cp -r " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
+			if not success then
+				print_error("Failed to install '" .. source_path .. "'")
+				os.exit(1)
+			end
+			if permissions then
+				local chmod_success = os.execute("chmod " .. permissions .. " " .. shell_escape(full_dest_path))
+				if not chmod_success then
+					print_error("Failed to set permissions for '" .. full_dest_path .. "'")
+					os.exit(1)
+				end
+			end
+			table.insert(pkg.files, full_dest_path)
 		end
-		table.insert(pkg.files, full_dest_path)
 	end
 
 	local function uninstall(destination_path)
 		local full_dest_path = (ROOT or "") .. destination_path
-		print("  Uninstalling '" .. full_dest_path .. "'")
-		local success = os.execute("rm -rf " .. shell_escape(full_dest_path))
-		if not success then
-			print_error("Failed to uninstall \'" .. full_dest_path .. "\'")
-		os.exit(1)
+		if not is_graph_mode then
+			print("  Uninstalling '" .. full_dest_path .. "'")
+			local success = os.execute("rm -rf " .. shell_escape(full_dest_path))
+			if not success then
+				print_error("Failed to uninstall '" .. full_dest_path .. "'")
+				os.exit(1)
+			end
 		end
 	end
 
@@ -416,17 +471,20 @@ local function load_package(pkg_path, options_str)
 			full_source_path = (ROOT or "") .. source_path
 		end
 		local full_dest_path = (ROOT or "") .. destination_path
-		print("  Symlinking '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
-		local parent_dir = dirname(full_dest_path)
-		if parent_dir ~= nil and parent_dir ~= "" then
-			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		if not is_graph_mode then
+			print("  Symlinking '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
+			local parent_dir = dirname(full_dest_path)
+			if parent_dir ~= nil and parent_dir ~= "" then
+				os.execute("mkdir -p " .. shell_escape(parent_dir))
+			end
+			local success =
+				os.execute("ln -sf " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
+			if not success then
+				print_error("Failed to create symlink from '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
+				os.exit(1)
+			end
+			table.insert(pkg.files, full_dest_path)
 		end
-		local success = os.execute("ln -sf " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
-		if not success then
-			print_error("Failed to create symlink from \'" .. full_source_path .. "\' to \'" .. full_dest_path .. "\'")
-		os.exit(1)
-		end
-		table.insert(pkg.files, full_dest_path)
 	end
 
 	local function dump(t, name, indent)
@@ -449,16 +507,18 @@ local function load_package(pkg_path, options_str)
 		print(padding .. "}")
 	end
 	local function sh(command)
-		print("  Executing shell command: " .. command)
-		local cd_prefix = ""
-		if CURRENT_SOURCE_BASE_DIR ~= nil then
-			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
-		end
-		local full_command = cd_prefix .. command
-		local success = os.execute(full_command)
-		if not success then
-			print_error("Shell command failed: " .. command)
-		os.exit(1)
+		if not is_graph_mode then
+			print("  Executing shell command: " .. command)
+			local cd_prefix = ""
+			if CURRENT_SOURCE_BASE_DIR ~= nil then
+				cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+			end
+			local full_command = cd_prefix .. command
+			local success = os.execute(full_command)
+			if not success then
+				print_error("Shell command failed: " .. command)
+				os.exit(1)
+			end
 		end
 	end
 
@@ -469,26 +529,28 @@ local function load_package(pkg_path, options_str)
 		else
 			full_dest_path = (ROOT or "") .. destination_path
 		end
-		print("  Cloning git repository '" .. repo_url .. "' to '" .. full_dest_path .. "'")
-		local parent_dir = dirname(full_dest_path)
-		if parent_dir ~= nil and parent_dir ~= "" then
-			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		if not is_graph_mode then
+			print("  Cloning git repository '" .. repo_url .. "' to '" .. full_dest_path .. "'")
+			local parent_dir = dirname(full_dest_path)
+			if parent_dir ~= nil and parent_dir ~= "" then
+				os.execute("mkdir -p " .. shell_escape(parent_dir))
+			end
+			local cd_prefix = ""
+			if CURRENT_SOURCE_BASE_DIR ~= nil then
+				cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+			end
+			local full_command = cd_prefix
+				.. "git clone --progress "
+				.. shell_escape(repo_url)
+				.. " "
+				.. shell_escape(full_dest_path)
+			local success = os.execute(full_command)
+			if not success then
+				print_error("Failed to clone git repository: " .. repo_url)
+				os.exit(1)
+			end
+			table.insert(pkg.files, full_dest_path)
 		end
-		local cd_prefix = ""
-		if CURRENT_SOURCE_BASE_DIR ~= nil then
-			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
-		end
-		local full_command = cd_prefix
-			.. "git clone --progress "
-			.. shell_escape(repo_url)
-			.. " "
-			.. shell_escape(full_dest_path)
-		local success = os.execute(full_command)
-		if not success then
-print_error("Failed to clone git repository: " .. repo_url)
-		os.exit(1)
-		end
-		table.insert(pkg.files, full_dest_path)
 	end
 
 	local function wget(url, destination_path)
@@ -498,27 +560,30 @@ print_error("Failed to clone git repository: " .. repo_url)
 		else
 			full_dest_path = (ROOT or "") .. destination_path
 		end
-		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "'")
-		local parent_dir = dirname(full_dest_path)
-		if parent_dir ~= nil and parent_dir ~= "" then
-			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		if not is_graph_mode then
+			print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "'")
+			local parent_dir = dirname(full_dest_path)
+			if parent_dir ~= nil and parent_dir ~= "" then
+				os.execute("mkdir -p " .. shell_escape(parent_dir))
+			end
+			local cd_prefix = ""
+			if CURRENT_SOURCE_BASE_DIR ~= nil then
+				cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+			end
+			local full_command = cd_prefix
+				.. "wget --show-progress -O "
+				.. shell_escape(full_dest_path)
+				.. " "
+				.. shell_escape(url)
+			local success = os.execute(full_command)
+			if not success then
+				print_error("Failed to download file from '" .. url .. "'")
+				os.exit(1)
+			end
+			table.insert(pkg.files, full_dest_path)
+			return full_dest_path
 		end
-		local cd_prefix = ""
-		if CURRENT_SOURCE_BASE_DIR ~= nil then
-			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
-		end
-		local full_command = cd_prefix
-			.. "wget --show-progress -O "
-			.. shell_escape(full_dest_path)
-			.. " "
-			.. shell_escape(url)
-		local success = os.execute(full_command)
-		if not success then
-			print_error("Failed to download file from \'" .. url .. "\'")
-		os.exit(1)
-		end
-		table.insert(pkg.files, full_dest_path)
-		return full_dest_path
+		return ""
 	end
 
 	local function curl(url, destination_path)
@@ -528,27 +593,30 @@ print_error("Failed to clone git repository: " .. repo_url)
 		else
 			full_dest_path = (ROOT or "") .. destination_path
 		end
-		print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "' using curl")
-		local parent_dir = dirname(full_dest_path)
-		if parent_dir ~= nil and parent_dir ~= "" then
-			os.execute("mkdir -p " .. shell_escape(parent_dir))
+		if not is_graph_mode then
+			print("  Downloading '" .. url .. "' to '" .. full_dest_path .. "' using curl")
+			local parent_dir = dirname(full_dest_path)
+			if parent_dir ~= nil and parent_dir ~= "" then
+				os.execute("mkdir -p " .. shell_escape(parent_dir))
+			end
+			local cd_prefix = ""
+			if CURRENT_SOURCE_BASE_DIR ~= nil then
+				cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
+			end
+			local full_command = cd_prefix
+				.. "curl -fSL --progress-bar -o "
+				.. shell_escape(full_dest_path)
+				.. " "
+				.. shell_escape(url)
+			local success = os.execute(full_command)
+			if not success then
+				print_error("Failed to download file from '" .. url .. "' using curl")
+				os.exit(1)
+			end
+			table.insert(pkg.files, full_dest_path)
+			return full_dest_path
 		end
-		local cd_prefix = ""
-		if CURRENT_SOURCE_BASE_DIR ~= nil then
-			cd_prefix = "cd " .. shell_escape(CURRENT_SOURCE_BASE_DIR) .. " && "
-		end
-		local full_command = cd_prefix
-			.. "curl -fSL --progress-bar -o "
-			.. shell_escape(full_dest_path)
-			.. " "
-			.. shell_escape(url)
-		local success = os.execute(full_command)
-		if not success then
-print_error("Failed to download file from \'" .. url .. "\' using curl")
-		os.exit(1)
-		end
-		table.insert(pkg.files, full_dest_path)
-		return full_dest_path
+		return ""
 	end
 
 	local options = {}
@@ -559,6 +627,32 @@ print_error("Failed to download file from \'" .. url .. "\' using curl")
 		else
 			print("Warning: Failed to parse options string: " .. options_str)
 			options = {}
+		end
+	end
+	local temp_pkg_options = {}
+	setmetatable(temp_pkg_options, { __index = _G })
+	local temp_chunk = loadfile(pkg_path, "t", temp_pkg_options)
+	if temp_chunk then
+		temp_chunk()
+	end
+
+	if is_graph_mode and temp_pkg_options.pkg and temp_pkg_options.pkg.options then
+		for name, def in pairs(temp_pkg_options.pkg.options) do
+			if options[name] == nil then
+				if def.default ~= nil then
+					options[name] = def.default
+				else
+					if def.type == "string" then
+						options[name] = "NULL"
+					elseif def.type == "number" then
+						options[name] = 0
+					elseif def.type == "boolean" then
+						options[name] = true
+					elseif def.type == "table" then
+						options[name] = {}
+					end
+				end
+			end
 		end
 	end
 
@@ -603,7 +697,6 @@ print_error("Failed to download file from \'" .. url .. "\' using curl")
 	end
 	return pkg
 end
-
 local function is_installed(pkg_name)
 	local db = load_db()
 	return db[pkg_name] ~= nil
@@ -694,22 +787,22 @@ local function install_binary(pkg_name, skip_deps, options_str)
 			return false
 		end
 
-		local hook, hooks = create_hook_system()
-		pkg.binary()(hook)
-
-		if hooks.prepare then
-			hooks.prepare()
+		local hook_register, hooks = create_hook_system()
+		pkg.binary()(hook_register)
+		local function run_hooks(hook_name)
+			if hooks[hook_name] then
+				for _, hook_entry in ipairs(hooks[hook_name]) do
+					if evaluate_condition(hook_entry.options["if"], pkg.OPTIONS) then
+						hook_entry.callback()
+					end
+				end
+			end
 		end
 
-		if hooks.pre_install then
-			hooks.pre_install()
-		end
-		if hooks.install then
-			hooks.install()
-		end
-		if hooks.post_install then
-			hooks.post_install()
-		end
+		run_hooks("prepare")
+		run_hooks("pre_install")
+		run_hooks("install")
+		run_hooks("post_install")
 
 		local db = load_db()
 		db[pkg.name] = {
@@ -768,24 +861,24 @@ build_from_source = function(pkg_name, skip_deps, options_str)
 	local old_dir = os.getenv("PWD")
 	os.execute("cd " .. shell_escape(build_dir))
 	CURRENT_SOURCE_BASE_DIR = build_dir
-	local hook, hooks = create_hook_system()
-	pkg.source()(hook)
+	local hook_register, hooks = create_hook_system()
+	pkg.source()(hook_register)
 	os.execute("cd " .. shell_escape(old_dir))
-	if hooks.prepare then
-		hooks.prepare()
+
+	local function run_hooks(hook_name)
+		if hooks[hook_name] then
+			for _, hook_entry in ipairs(hooks[hook_name]) do
+				if evaluate_condition(hook_entry.options["if"], pkg.OPTIONS) then
+					hook_entry.callback()
+				end
+			end
+		end
 	end
-	if hooks.build then
-		hooks.build()
-	end
-	if hooks.pre_install then
-		hooks.pre_install()
-	end
-	if hooks.install then
-		hooks.install()
-	end
-	if hooks.post_install then
-		hooks.post_install()
-	end
+	run_hooks("prepare")
+	run_hooks("build")
+	run_hooks("pre_install")
+	run_hooks("install")
+	run_hooks("post_install")
 
 	local db = load_db()
 	db[pkg.name] = {
@@ -1002,16 +1095,17 @@ Version ]] .. VERSION .. [[
 
 
 Usage:
-  pl <package>                Install package (binary)
-  pl b/<package> [...]        Build package(s) from source
-  pl u                        Update repositories
-  pl uu                       Upgrade installed packages
-  pl l                        List installed packages
-  pl s [term]                 Search for packages
-  pl -b=<path> <packages...>  Bootstrap mode (install to specified directory)
-  pl -bn=<path> <packages...> Bootstrap mode without filesystem initialization
-  pl -v, --version            Show version
-  pl -h, --help               Show this help
+  pl <package>[{...}]                Install package (binary)
+  pl b/<package>[{...}] [...]        Build package(s) from source
+  pl u                               Update repositories
+  pl uu                              Upgrade installed packages
+  pl l                               List installed packages
+  pl s [term]                        Search for packages
+  pl g <package>[{...}]              Show package graph
+  pl -b=<path> <packages...>         Bootstrap mode (install to specified directory)
+  pl -bn=<path> <packages...>        Bootstrap mode without filesystem initialization
+  pl -v, --version                   Show version
+  pl -h, --help                      Show this help
 
 Examples:
   pl com.example.hello
@@ -1022,8 +1116,146 @@ Examples:
 Bootstrap mode installs packages to the specified directory instead of /
 Useful for installing a fresh system to a new partition or chroot.
 
+[{...}] represents package options. Package options are Lua tables which gets passed to the package. Example:
+  pl com.example.hello{debug=true}
+
 License: MIT
 ]])
+end
+
+local function show_graph(pkg_name, pkg_options)
+	print(COLOR_BRIGHT_BLUE .. "Graph for package: " .. pkg_name .. COLOR_RESET)
+	local visited = {}
+	local traverse_package
+	traverse_package = function(current_pkg_name, indent)
+		indent = indent or ""
+		if visited[current_pkg_name] then
+			print(indent .. COLOR_BRIGHT_BLACK .. "(already visited) " .. current_pkg_name .. COLOR_RESET)
+			return
+		end
+		visited[current_pkg_name] = true
+		local pkg_path, repo_name = find_package(current_pkg_name)
+		if not pkg_path then
+			print(indent .. COLOR_RED .. "✗ Package not found: " .. current_pkg_name .. COLOR_RESET)
+			return
+		end
+
+		local pkg = load_package(pkg_path, pkg_options, true)
+		print(indent .. COLOR_CYAN .. "Package: " .. pkg.name .. " (" .. (pkg.version or "N/A") .. ")" .. COLOR_RESET)
+		print(indent .. "  Description: " .. (pkg.description or "N/A"))
+		print(indent .. "  Repo: " .. repo_name)
+		print(indent .. "  Source build: " .. tostring(pkg.source ~= nil))
+		print(indent .. "  Binary install: " .. tostring(pkg.binary ~= nil))
+		if pkg.options then
+			print(indent .. "  Supported Options:")
+			for name, def in pairs(pkg.options) do
+				local default_val_str = ""
+				if def.default ~= nil then
+					default_val_str = " (default: " .. tostring(def.default) .. ")"
+				end
+				local range_str = ""
+				if def.type == "number" then
+					if def.min ~= nil and def.max ~= nil then
+						range_str = ", range: [" .. def.min .. ", " .. def.max .. "]"
+					elseif def.min ~= nil then
+						range_str = ", min: " .. def.min
+					elseif def.max ~= nil then
+						range_str = ", max: " .. def.max
+					end
+				elseif def.type == "string" and def.from ~= nil then
+					local allowed_values_str = table.concat(def.from, ", ")
+					range_str = ", from: {" .. allowed_values_str .. "}"
+				end
+				print(indent .. "    - " .. name .. " (type: " .. def.type .. default_val_str .. range_str .. ")")
+				if def.description then
+					print(indent .. "      Description: " .. def.description)
+				end
+			end
+		end
+		local _, hooks = create_hook_system()
+		if pkg.source then
+			pkg.source()(function(hook_name, options)
+				return function(callback)
+					if not hooks[hook_name] then
+						hooks[hook_name] = {}
+					end
+					table.insert(hooks[hook_name], { type = "source", callback = callback, options = options or {} })
+				end
+			end)
+		end
+		if pkg.binary then
+			pkg.binary()(function(hook_name, options)
+				return function(callback)
+					if not hooks[hook_name] then
+						hooks[hook_name] = {}
+					end
+					table.insert(hooks[hook_name], { type = "binary", callback = callback, options = options or {} })
+				end
+			end)
+		end
+
+		local hook_count = 0
+		for hook_name, hook_entries in pairs(hooks) do
+			if #hook_entries > 0 then
+				if hook_count == 0 then
+					print(indent .. "  Hooks:")
+				end
+				hook_count = hook_count + 1
+				for _, entry in ipairs(hook_entries) do
+					local options_str = ""
+					if next(entry.options) then
+						options_str = " (options: "
+						local opt_parts = {}
+						for k, v in pairs(entry.options) do
+							if type(v) == "table" then
+								local inner_opt_parts = {}
+								for ik, iv in pairs(v) do
+									table.insert(inner_opt_parts, ik .. "=" .. tostring(iv))
+								end
+								table.insert(opt_parts, k .. "={" .. table.concat(inner_opt_parts, ", ") .. "}")
+							else
+								table.insert(opt_parts, k .. "=" .. tostring(v))
+							end
+						end
+						options_str = options_str .. table.concat(opt_parts, ", ") .. ")"
+					end
+					print(indent .. "    - (" .. entry.type .. ") " .. hook_name .. options_str)
+				end
+			end
+		end
+
+		if pkg.depends and #pkg.depends > 0 then
+			print(indent .. "  Dependencies:")
+			for _, dep_full_name in ipairs(pkg.depends) do
+				local dep_name = dep_full_name
+				local dep_options_str = "{}"
+				local build_dep = false
+
+				if dep_full_name:match("^b/") then
+					build_dep = true
+					dep_name = dep_full_name:sub(3)
+				end
+
+				local name_match, options_match = dep_name:match("^(.-){(.*)}$")
+				if name_match and options_match then
+					dep_name = name_match
+					dep_options_str = "{" .. options_match .. "}"
+				end
+
+				print(
+					indent
+						.. "    → "
+						.. dep_name
+						.. (build_dep and " (build)" or "")
+						.. " (options: "
+						.. dep_options_str
+						.. ")"
+				)
+				traverse_package(dep_name, indent .. "      ")
+			end
+		end
+	end
+	traverse_package(pkg_name)
 end
 
 local function main(args)
@@ -1054,6 +1286,22 @@ local function main(args)
 	end
 	if args[1] == "s" then
 		search_packages(args[2])
+		return
+	end
+	if args[1] == "g" then
+		if not args[2] then
+			print(COLOR_RED .. "✗ Package name required for graph command." .. COLOR_RESET)
+			return
+		end
+		local pkg_full_name = args[2]
+		local pkg_name = pkg_full_name
+		local pkg_options_str = "{}"
+		local name_match, options_match = pkg_full_name:match("^(.-){(.*)}$")
+		if name_match and options_match then
+			pkg_name = name_match
+			pkg_options_str = "{" .. options_match .. "}"
+		end
+		show_graph(pkg_name, pkg_options_str)
 		return
 	end
 	local build_mode = false
