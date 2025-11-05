@@ -324,6 +324,48 @@ local function create_hook_system()
 	end, hooks
 end
 
+local function print_error(message)
+	io.stderr:write(COLOR_RED .. "✗ Error: " .. message .. COLOR_RESET .. "\n")
+end
+
+local function validate_options(defined_options, provided_options)
+	local validated = {}
+	for name, def in pairs(defined_options) do
+		local value = provided_options[name]
+		if value == nil then
+			if def.default ~= nil then
+				validated[name] = def.default
+			else
+				print_error("Missing required option: " .. name)
+				os.exit(1)
+			end
+		else
+			local typeof_value = type(value)
+			if def.type == "boolean" then
+				if typeof_value ~= "boolean" then
+					print_error("Option '" .. name .. "' must be a boolean, got " .. typeof_value)
+					os.exit(1)
+				end
+			elseif def.type == "string" then
+				if typeof_value ~= "string" then
+					print_error("Option '" .. name .. "' must be a string, got " .. typeof_value)
+					os.exit(1)
+				end
+			elseif def.type == "number" then				
+				if typeof_value ~= "number" then
+					print_error("Option '" .. name .. "' must be a number, got " .. typeof_value)
+					os.exit(1)
+				end
+			else
+				print_error("Unknown option type for '" .. name .. "': " .. def.type)
+				os.exit(1)
+			end
+			validated[name] = value
+		end
+	end
+	return validated
+end
+
 local function load_package(pkg_path, options_str)
 	local pkg = {}
 	pkg.files = {}
@@ -343,12 +385,14 @@ local function load_package(pkg_path, options_str)
 		end
 		local success = os.execute("cp -r " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
 		if not success then
-			error("Failed to install '" .. source_path .. "'")
+			print_error("Failed to install '" .. source_path .. "'")
+		os.exit(1)
 		end
 		if permissions then
 			local chmod_success = os.execute("chmod " .. permissions .. " " .. shell_escape(full_dest_path))
 			if not chmod_success then
-				error("Failed to set permissions for '" .. full_dest_path .. "'")
+				print_error("Failed to set permissions for \'" .. full_dest_path .. "\'")
+		os.exit(1)
 			end
 		end
 		table.insert(pkg.files, full_dest_path)
@@ -359,7 +403,8 @@ local function load_package(pkg_path, options_str)
 		print("  Uninstalling '" .. full_dest_path .. "'")
 		local success = os.execute("rm -rf " .. shell_escape(full_dest_path))
 		if not success then
-			error("Failed to uninstall '" .. full_dest_path .. "'")
+			print_error("Failed to uninstall \'" .. full_dest_path .. "\'")
+		os.exit(1)
 		end
 	end
 
@@ -378,7 +423,8 @@ local function load_package(pkg_path, options_str)
 		end
 		local success = os.execute("ln -sf " .. shell_escape(full_source_path) .. " " .. shell_escape(full_dest_path))
 		if not success then
-			error("Failed to create symlink from '" .. full_source_path .. "' to '" .. full_dest_path .. "'")
+			print_error("Failed to create symlink from \'" .. full_source_path .. "\' to \'" .. full_dest_path .. "\'")
+		os.exit(1)
 		end
 		table.insert(pkg.files, full_dest_path)
 	end
@@ -411,7 +457,8 @@ local function load_package(pkg_path, options_str)
 		local full_command = cd_prefix .. command
 		local success = os.execute(full_command)
 		if not success then
-			error("Shell command failed: " .. command)
+			print_error("Shell command failed: " .. command)
+		os.exit(1)
 		end
 	end
 
@@ -438,7 +485,8 @@ local function load_package(pkg_path, options_str)
 			.. shell_escape(full_dest_path)
 		local success = os.execute(full_command)
 		if not success then
-			error("Failed to clone git repository: " .. repo_url)
+print_error("Failed to clone git repository: " .. repo_url)
+		os.exit(1)
 		end
 		table.insert(pkg.files, full_dest_path)
 	end
@@ -466,7 +514,8 @@ local function load_package(pkg_path, options_str)
 			.. shell_escape(url)
 		local success = os.execute(full_command)
 		if not success then
-			error("Failed to download file from '" .. url .. "'")
+			print_error("Failed to download file from \'" .. url .. "\'")
+		os.exit(1)
 		end
 		table.insert(pkg.files, full_dest_path)
 		return full_dest_path
@@ -495,7 +544,8 @@ local function load_package(pkg_path, options_str)
 			.. shell_escape(url)
 		local success = os.execute(full_command)
 		if not success then
-			error("Failed to download file from '" .. url .. "' using curl")
+print_error("Failed to download file from \'" .. url .. "\' using curl")
+		os.exit(1)
 		end
 		table.insert(pkg.files, full_dest_path)
 		return full_dest_path
@@ -539,11 +589,17 @@ local function load_package(pkg_path, options_str)
 	setmetatable(env, { __index = _G })
 	local chunk = loadfile(pkg_path, "t", env)
 	if not chunk then
-		error("Failed to load package file: " .. pkg_path)
+		print_error("Failed to load package file: " .. pkg_path)
+		os.exit(1)
 	end
 	chunk()
 	for k, v in pairs(env.pkg) do
 		pkg[k] = v
+	end
+
+	if pkg.options then
+		options = validate_options(pkg.options, options)
+		env.OPTIONS = options
 	end
 	return pkg
 end
@@ -827,7 +883,7 @@ local function get_package_metadata(pkg_path)
 	end)
 
 	if not success then
-		print("Error loading package for metadata: " .. pkg_path .. " - " .. err)
+		print_error("Error loading package for metadata: " .. pkg_path .. " - " .. err)
 		return nil
 	end
 
