@@ -383,25 +383,26 @@ local function load_package(pkg_path, options_str)
 		table.insert(pkg.files, full_dest_path)
 	end
 
-			local function dump(t, name, indent)
-				indent = indent or 0
-				local padding = string.rep("  ", indent)
-				if name then
-					print(padding .. COLOR_BRIGHT_YELLOW .. name .. " = {" .. COLOR_RESET)
-				else
-					print(padding .. "{")
-				end
-		
-				for k, v in pairs(t) do
-					local new_padding = string.rep("  ", indent + 1)
-					if type(v) == "table" then
-						dump(v, tostring(k), indent + 1)
-					else
-						print(new_padding .. tostring(k) .. " = " .. tostring(v))
-					end
-				end
-				print(padding .. "}")
-			end	local function sh(command)
+	local function dump(t, name, indent)
+		indent = indent or 0
+		local padding = string.rep("  ", indent)
+		if name then
+			print(padding .. COLOR_BRIGHT_YELLOW .. name .. " = {" .. COLOR_RESET)
+		else
+			print(padding .. "{")
+		end
+
+		for k, v in pairs(t) do
+			local new_padding = string.rep("  ", indent + 1)
+			if type(v) == "table" then
+				dump(v, tostring(k), indent + 1)
+			else
+				print(new_padding .. tostring(k) .. " = " .. tostring(v))
+			end
+		end
+		print(padding .. "}")
+	end
+	local function sh(command)
 		print("  Executing shell command: " .. command)
 		local cd_prefix = ""
 		if CURRENT_SOURCE_BASE_DIR ~= nil then
@@ -532,6 +533,7 @@ local function load_package(pkg_path, options_str)
 		wget = wget,
 		curl = curl,
 		dump = dump,
+		ARCH = io.popen("uname -m"):read("*all"):gsub("%s+", ""),
 		OPTIONS = options,
 	}
 	setmetatable(env, { __index = _G })
@@ -813,6 +815,7 @@ local function get_package_metadata(pkg_path)
 			wget = function() end,
 			curl = function() end,
 			dump = function() end,
+			ARCH = nil,
 			OPTIONS = {},
 		}
 		setmetatable(env, { __index = _G })
