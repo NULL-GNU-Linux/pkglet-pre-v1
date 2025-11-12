@@ -1243,8 +1243,26 @@ local function show_graph(pkg_name, pkg_options)
 		visited[current_pkg_name] = true
 		local pkg_path, repo_name = find_package(current_pkg_name)
 		if not pkg_path then
-			print(indent .. COLOR_RED .. "✗ Package not found: " .. current_pkg_name .. COLOR_RESET)
-			return
+			local providers = find_providing_packages(current_pkg_name)
+			if #providers > 0 then
+				print(
+					indent
+						.. COLOR_YELLOW
+						.. "→ Virtual package: "
+						.. current_pkg_name
+						.. " (provided by: "
+						.. table.concat(providers, ", ")
+						.. ")"
+						.. COLOR_RESET
+				)
+				for _, provider_name in ipairs(providers) do
+					traverse_package(provider_name, indent .. "  ")
+				end
+				return
+			else
+				print(indent .. COLOR_RED .. "✗ Package not found: " .. current_pkg_name .. COLOR_RESET)
+				return
+			end
 		end
 
 		local pkg = load_package(pkg_path, pkg_options, true)
