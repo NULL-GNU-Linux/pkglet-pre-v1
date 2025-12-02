@@ -925,45 +925,48 @@ local function install_binary(pkg_name, skip_deps, options_str)
 				end
 			end
 		end
+	end
 
-		local mode_str = ROOT ~= "" and " (binary, root=" .. ROOT .. ")" or " (binary)"
-		print(COLOR_BRIGHT_BLUE .. "Installing " .. pkg_name .. mode_str .. "..." .. COLOR_RESET)
-		local build_dir = CACHE_DIR .. "/build/" .. pkg.name
-		os.execute("rm -rf " .. build_dir)
-		os.execute("mkdir -p " .. build_dir)
-		CURRENT_SOURCE_BASE_DIR = build_dir
-		if not pkg.binary then
-			print(COLOR_RED .. "✗ Package does not support binary installation" .. COLOR_RESET)
-			CURRENT_SOURCE_BASE_DIR = nil
-			return false
-		end
+	local mode_str = ROOT ~= "" and " (binary, root=" .. ROOT .. ")" or " (binary)"
+	if skip_deps then
+		mode_str = mode_str .. " (no deps)"
+	end
+	print(COLOR_BRIGHT_BLUE .. "Installing " .. pkg_name .. mode_str .. "..." .. COLOR_RESET)
+	local build_dir = CACHE_DIR .. "/build/" .. pkg.name
+	os.execute("rm -rf " .. build_dir)
+	os.execute("mkdir -p " .. build_dir)
+	CURRENT_SOURCE_BASE_DIR = build_dir
+	if not pkg.binary then
+		print(COLOR_RED .. "✗ Package does not support binary installation" .. COLOR_RESET)
+		CURRENT_SOURCE_BASE_DIR = nil
+		return false
+	end
 
-		local hook_register, hooks = create_hook_system()
-		pkg.binary()(hook_register)
-		local function run_hooks(hook_name)
-			if hooks[hook_name] then
-				for _, hook_entry in ipairs(hooks[hook_name]) do
-					if evaluate_condition(hook_entry.options["if"], pkg.OPTIONS) then
-						hook_entry.callback()
-					end
+	local hook_register, hooks = create_hook_system()
+	pkg.binary()(hook_register)
+	local function run_hooks(hook_name)
+		if hooks[hook_name] then
+			for _, hook_entry in ipairs(hooks[hook_name]) do
+				if evaluate_condition(hook_entry.options["if"], pkg.OPTIONS) then
+					hook_entry.callback()
 				end
 			end
 		end
-
-		run_hooks("prepare")
-		run_hooks("pre_install")
-		run_hooks("install")
-		run_hooks("post_install")
-		local db = load_db()
-		db[pkg.name] = {
-			version = pkg.version,
-			files = pkg.files or {},
-		}
-		save_db(db)
-		print(COLOR_GREEN .. "\n✓ " .. pkg_name .. " installed successfully" .. COLOR_RESET)
-		CURRENT_SOURCE_BASE_DIR = nil
-		return true
 	end
+
+	run_hooks("prepare")
+	run_hooks("pre_install")
+	run_hooks("install")
+	run_hooks("post_install")
+	local db = load_db()
+	db[pkg.name] = {
+		version = pkg.version,
+		files = pkg.files or {},
+	}
+	save_db(db)
+	print(COLOR_GREEN .. "\n✓ " .. pkg_name .. " installed successfully" .. COLOR_RESET)
+	CURRENT_SOURCE_BASE_DIR = nil
+	return true
 end
 build_from_source = function(pkg_name, skip_deps, options_str)
 	local pkg_path, repo_name = find_package(pkg_name)
@@ -998,6 +1001,9 @@ build_from_source = function(pkg_name, skip_deps, options_str)
 	end
 
 	local mode_str = ROOT ~= "" and " from source (root=" .. ROOT .. ")" or " from source"
+	if skip_deps then
+		mode_str = mode_str .. " (no deps)"
+	end
 	print(COLOR_BRIGHT_BLUE .. "Building " .. pkg_name .. mode_str .. "..." .. COLOR_RESET)
 	if not pkg.source then
 		print(COLOR_RED .. "✗ Package does not support source installation" .. COLOR_RESET)
@@ -1367,6 +1373,7 @@ Usage:
   pl <package>[{...}]                Install package (binary)
   pl b/<package>[{...}] [...]        Build package(s) from source
   pl -f <package>[{...}]             Force reinstall package
+  pl -n <package>[{...}]             Install package without dependencies
   pl r <package>                     Remove an installed package
   pl i <package>                     Show package information
   pl u                               Update repositories
@@ -1387,6 +1394,7 @@ Examples:
   pl b/xyz.obsidianos.obsidianctl
   pl b/com.example.pkg1 com.example.pkg2
   pl -b=/mnt com.example.base b/org.kernel.linux b/org.lua.lua
+  pl -n -b=/mnt com.example.pkg      Bootstrap single package without deps
   pl r com.example.hello
   pl i org.kernel.linux
   pl f net.busybox.busybox
@@ -1639,11 +1647,14 @@ local function main(args)
 	end
 	local build_mode = false
 	local force_mode = false
+	local skip_deps = false
 	local packages = {}
 	local skip_next = false
 	for i, arg in ipairs(args) do
 		if skip_next then
 			skip_next = false
+		elseif arg == "-n" then
+			skip_deps = true
 		elseif arg == "-f" then
 			force_mode = true
 		elseif arg:match("^%-bn=") then
@@ -1700,9 +1711,9 @@ local function main(args)
 		end
 
 		if pkg_info.build then
-			build_from_source(pkg_info.name, false, pkg_info.options)
+			build_from_source(pkg_info.name, skip_deps, pkg_info.options)
 		else
-			install_binary(pkg_info.name, false, pkg_info.options)
+			install_binary(pkg_info.name, skip_deps, pkg_info.options)
 		end
 	end
 end
