@@ -1056,6 +1056,171 @@ local function list_installed()
 	end
 end
 
+local function remove_package(pkg_name)
+	local db = load_db()
+	if not db[pkg_name] then
+		print(COLOR_RED .. "✗ Package not installed: " .. pkg_name .. COLOR_RESET)
+		return false
+	end
+
+	print(COLOR_BRIGHT_BLUE .. "Removing " .. pkg_name .. "..." .. COLOR_RESET)
+	local files = db[pkg_name].files or {}
+
+	-- Remove files in reverse order (deeper paths first)
+	table.sort(files, function(a, b) return #a > #b end)
+
+	for _, file in ipairs(files) do
+		local attr = io.open(file, "r")
+		if attr then
+			attr:close()
+			print("  Removing: " .. file)
+			os.execute("rm -rf " .. shell_escape(file))
+		else
+			print(COLOR_YELLOW .. "  Already gone: " .. file .. COLOR_RESET)
+		end
+	end
+
+	db[pkg_name] = nil
+	save_db(db)
+	print(COLOR_GREEN .. "✓ " .. pkg_name .. " removed successfully" .. COLOR_RESET)
+	return true
+end
+
+local function show_package_info(pkg_name)
+	local pkg_path, repo_name = find_package(pkg_name)
+	local db = load_db()
+	local installed_info = db[pkg_name]
+
+	if not pkg_path and not installed_info then
+		print(COLOR_RED .. "✗ Package not found: " .. pkg_name .. COLOR_RESET)
+		return false
+	end
+
+	local pkg = nil
+	if pkg_path then
+		pkg = load_package(pkg_path, "{}", true)
+	end
+
+	print(COLOR_BRIGHT_CYAN .. "Package Information" .. COLOR_RESET)
+	print(COLOR_BRIGHT_BLACK .. string.rep("─", 40) .. COLOR_RESET)
+
+	if pkg then
+		print(COLOR_BRIGHT_WHITE .. "Name:        " .. COLOR_RESET .. (pkg.name or pkg_name))
+		print(COLOR_BRIGHT_WHITE .. "Version:     " .. COLOR_RESET .. (pkg.version or "N/A"))
+		print(COLOR_BRIGHT_WHITE .. "Description: " .. COLOR_RESET .. (pkg.description or "N/A"))
+		print(COLOR_BRIGHT_WHITE .. "Maintainer:  " .. COLOR_RESET .. (pkg.maintainer or "N/A"))
+		print(COLOR_BRIGHT_WHITE .. "Repository:  " .. COLOR_RESET .. (repo_name or "N/A"))
+
+		if pkg.provides and #pkg.provides > 0 then
+			print(COLOR_BRIGHT_WHITE .. "Provides:    " .. COLOR_RESET .. table.concat(pkg.provides, ", "))
+		end
+
+		if pkg.depends and #pkg.depends > 0 then
+			print(COLOR_BRIGHT_WHITE .. "Depends:     " .. COLOR_RESET .. table.concat(pkg.depends, ", "))
+		end
+
+		print(COLOR_BRIGHT_WHITE .. "Binary:      " .. COLOR_RESET .. (pkg.binary and "Yes" or "No"))
+		print(COLOR_BRIGHT_WHITE .. "Source:      " .. COLOR_RESET .. (pkg.source and "Yes" or "No"))
+
+		if pkg.options then
+			print(COLOR_BRIGHT_WHITE .. "Options:" .. COLOR_RESET)
+			for opt_name, opt_def in pairs(pkg.options) do
+				local opt_type = opt_def.type or "any"
+				local opt_default = opt_def.default ~= nil and tostring(opt_def.default) or "none"
+				local opt_desc = opt_def.description or ""
+				print(string.format("  %s (%s, default: %s) - %s", opt_name, opt_type, opt_default, opt_desc))
+			end
+		end
+	end
+
+	print("")
+	if installed_info then
+		print(COLOR_GREEN .. "Status:      Installed" .. COLOR_RESET)
+		print(COLOR_BRIGHT_WHITE .. "Installed Version: " .. COLOR_RESET .. (installed_info.version or "N/A"))
+		local file_count = installed_info.files and #installed_info.files or 0
+		print(COLOR_BRIGHT_WHITE .. "Files:       " .. COLOR_RESET .. file_count .. " file(s)")
+	else
+		print(COLOR_YELLOW .. "Status:      Not installed" .. COLOR_RESET)
+	end
+
+	return true
+end
+
+local function list_package_files(pkg_name)
+	local db = load_db()
+	if not db[pkg_name] then
+		print(COLOR_RED .. "✗ Package not installed: " .. pkg_name .. COLOR_RESET)
+		return false
+	end
+
+	local files = db[pkg_name].files or {}
+	print(COLOR_BRIGHT_BLUE .. "Files installed by " .. pkg_name .. ":" .. COLOR_RESET .. "\n")
+
+	if #files == 0 then
+		print(COLOR_YELLOW .. "  (no files tracked)" .. COLOR_RESET)
+	else
+		for _, file in ipairs(files) do
+			local exists = io.open(file, "r")
+			if exists then
+				exists:close()
+				print(COLOR_GREEN .. "  " .. file .. COLOR_RESET)
+			else
+				print(COLOR_RED .. "  " .. file .. " (missing)" .. COLOR_RESET)
+			end
+		end
+		print(COLOR_BRIGHT_BLUE .. "\nTotal: " .. #files .. " file(s)" .. COLOR_RESET)
+	end
+	return true
+end
+
+local function find_file_owner(file_path)
+	local db = load_db()
+	local resolved_path = resolve_path(file_path)
+	local owners = {}
+
+	for pkg_name, info in pairs(db) do
+		if info.files then
+			for _, file in ipairs(info.files) do
+				if file == resolved_path or file == file_path then
+					table.insert(owners, { name = pkg_name, version = info.version })
+				end
+			end
+		end
+	end
+
+	if #owners == 0 then
+		print(COLOR_YELLOW .. "No package owns: " .. file_path .. COLOR_RESET)
+		return false
+	end
+
+	print(COLOR_BRIGHT_BLUE .. "File: " .. file_path .. COLOR_RESET)
+	print(COLOR_BRIGHT_BLUE .. "Owned by:" .. COLOR_RESET)
+	for _, owner in ipairs(owners) do
+		print(COLOR_GREEN .. "  " .. owner.name .. COLOR_RESET .. "  " .. owner.version)
+	end
+	return true
+end
+
+local function clean_cache()
+	print(COLOR_BRIGHT_BLUE .. "Cleaning cache..." .. COLOR_RESET)
+
+	local build_dir = CACHE_DIR .. "/build"
+	local handle = io.popen("du -sh " .. shell_escape(build_dir) .. " 2>/dev/null")
+	local size_info = handle and handle:read("*a") or ""
+	if handle then handle:close() end
+
+	local size = size_info:match("^(%S+)") or "0"
+
+	local success = os.execute("rm -rf " .. shell_escape(build_dir) .. "/*")
+	if success then
+		print(COLOR_GREEN .. "✓ Cleaned build cache (" .. size .. " freed)" .. COLOR_RESET)
+	else
+		print(COLOR_YELLOW .. "⚠ Could not fully clean cache" .. COLOR_RESET)
+	end
+
+	return true
+end
+
 local function upgrade_packages()
 	local db = load_db()
 	local count = 0
@@ -1204,11 +1369,17 @@ Version ]] .. VERSION .. [[
 Usage:
   pl <package>[{...}]                Install package (binary)
   pl b/<package>[{...}] [...]        Build package(s) from source
+  pl -f <package>[{...}]             Force reinstall package
+  pl r <package>                     Remove an installed package
+  pl i <package>                     Show package information
   pl u                               Update repositories
   pl uu                              Upgrade installed packages
   pl l                               List installed packages
   pl s [term]                        Search for packages
   pl g <package>[{...}]              Show package graph
+  pl f <package>                     List files installed by a package
+  pl o <file>                        Find which package owns a file
+  pl c                               Clean the build cache
   pl -b=<path> <packages...>         Bootstrap mode (install to specified directory)
   pl -bn=<path> <packages...>        Bootstrap mode without filesystem initialization
   pl -v, --version                   Show version
@@ -1219,6 +1390,10 @@ Examples:
   pl b/xyz.obsidianos.obsidianctl
   pl b/com.example.pkg1 com.example.pkg2
   pl -b=/mnt com.example.base b/org.kernel.linux b/org.lua.lua
+  pl r com.example.hello
+  pl i org.kernel.linux
+  pl f net.busybox.busybox
+  pl o /usr/bin/lua
 
 Bootstrap mode installs packages to the specified directory instead of /
 Useful for installing a fresh system to a new partition or chroot.
@@ -1413,6 +1588,42 @@ local function main(args)
 		search_packages(args[2])
 		return
 	end
+	if args[1] == "r" then
+		if not args[2] then
+			print(COLOR_RED .. "✗ Package name required for remove command." .. COLOR_RESET)
+			return
+		end
+		remove_package(args[2])
+		return
+	end
+	if args[1] == "i" then
+		if not args[2] then
+			print(COLOR_RED .. "✗ Package name required for info command." .. COLOR_RESET)
+			return
+		end
+		show_package_info(args[2])
+		return
+	end
+	if args[1] == "f" then
+		if not args[2] then
+			print(COLOR_RED .. "✗ Package name required for files command." .. COLOR_RESET)
+			return
+		end
+		list_package_files(args[2])
+		return
+	end
+	if args[1] == "o" then
+		if not args[2] then
+			print(COLOR_RED .. "✗ File path required for owns command." .. COLOR_RESET)
+			return
+		end
+		find_file_owner(args[2])
+		return
+	end
+	if args[1] == "c" then
+		clean_cache()
+		return
+	end
 	if args[1] == "g" then
 		if not args[2] then
 			print(COLOR_RED .. "✗ Package name required for graph command." .. COLOR_RESET)
@@ -1430,11 +1641,14 @@ local function main(args)
 		return
 	end
 	local build_mode = false
+	local force_mode = false
 	local packages = {}
 	local skip_next = false
 	for i, arg in ipairs(args) do
 		if skip_next then
 			skip_next = false
+		elseif arg == "-f" then
+			force_mode = true
 		elseif arg:match("^%-bn=") then
 			ROOT = arg:match("^%-bn=(.+)")
 			if ROOT:sub(-1) == "/" then
@@ -1480,6 +1694,15 @@ local function main(args)
 		return
 	end
 	for _, pkg_info in ipairs(packages) do
+		-- If force mode, remove the package first if installed
+		if force_mode then
+			local db = load_db()
+			if db[pkg_info.name] then
+				print(COLOR_BRIGHT_YELLOW .. "Force mode: removing existing " .. pkg_info.name .. "..." .. COLOR_RESET)
+				remove_package(pkg_info.name)
+			end
+		end
+
 		if pkg_info.build then
 			build_from_source(pkg_info.name, false, pkg_info.options)
 		else
