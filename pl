@@ -1065,10 +1065,7 @@ local function remove_package(pkg_name)
 
 	print(COLOR_BRIGHT_BLUE .. "Removing " .. pkg_name .. "..." .. COLOR_RESET)
 	local files = db[pkg_name].files or {}
-
-	-- Remove files in reverse order (deeper paths first)
 	table.sort(files, function(a, b) return #a > #b end)
-
 	for _, file in ipairs(files) do
 		local attr = io.open(file, "r")
 		if attr then
@@ -1694,7 +1691,6 @@ local function main(args)
 		return
 	end
 	for _, pkg_info in ipairs(packages) do
-		-- If force mode, remove the package first if installed
 		if force_mode then
 			local db = load_db()
 			if db[pkg_info.name] then
