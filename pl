@@ -328,6 +328,68 @@ local function create_hook_system()
 		hooks
 end
 
+local function run_package_hook_scripts(pkg_path, hook_name, env)
+	local base = pkg_path:gsub("%.lua$", "")
+	local hook_dir = base .. "/hooks/" .. hook_name
+	local handle = io.popen("ls -1 " .. shell_escape(hook_dir) .. " 2>/dev/null")
+	if not handle then
+		return
+	end
+	local listing = handle:read("*all")
+	handle:close()
+	if listing == "" then
+		return
+	end
+	local files = {}
+	for name in listing:gmatch("[^\r\n]+") do
+		if name:match("%.lua$") then
+			table.insert(files, name)
+		end
+	end
+	if #files == 0 then
+		return
+	end
+	table.sort(files)
+	for _, name in ipairs(files) do
+		local script_path = hook_dir .. "/" .. name
+		local chunk = loadfile(script_path, "t", env)
+		if chunk then
+			chunk()
+		end
+	end
+end
+
+local function run_global_hook_scripts(hook_name, env)
+	local hook_dir = (ROOT or "") .. "/usr/share/pkglet/hooks"
+	local handle = io.popen("ls -1 " .. shell_escape(hook_dir) .. " 2>/dev/null")
+	if not handle then
+		return
+	end
+	local listing = handle:read("*all")
+	handle:close()
+	if listing == "" then
+		return
+	end
+	local files = {}
+	for name in listing:gmatch("[^\r\n]+") do
+		if name:match("%.lua$") then
+			table.insert(files, name)
+		end
+	end
+	if #files == 0 then
+		return
+	end
+	table.sort(files)
+	env.hook_name = hook_name
+	for _, name in ipairs(files) do
+		local script_path = hook_dir .. "/" .. name
+		local chunk = loadfile(script_path, "t", env)
+		if chunk then
+			chunk()
+		end
+	end
+end
+
 local function print_error(message)
 	io.stderr:write(COLOR_RED .. "✗ Error: " .. message .. COLOR_RESET .. "\n")
 end
@@ -944,6 +1006,23 @@ local function install_binary(pkg_name, skip_deps, options_str)
 
 	local hook_register, hooks = create_hook_system()
 	pkg.binary()(hook_register)
+	local hook_env = {
+		ROOT = ROOT,
+		pkg = pkg,
+		OPTIONS = pkg.OPTIONS or {},
+		ARCH = io.popen("uname -m"):read("*all"):gsub("%s+", ""),
+		CURRENT_SOURCE_BASE_DIR = CURRENT_SOURCE_BASE_DIR,
+		os = os,
+		io = io,
+		print = print,
+		table = table,
+		string = string,
+		ipairs = ipairs,
+		pairs = pairs,
+		tonumber = tonumber,
+		tostring = tostring,
+	}
+	setmetatable(hook_env, { __index = _G })
 	local function run_hooks(hook_name)
 		if hooks[hook_name] then
 			for _, hook_entry in ipairs(hooks[hook_name]) do
@@ -952,6 +1031,8 @@ local function install_binary(pkg_name, skip_deps, options_str)
 				end
 			end
 		end
+		run_package_hook_scripts(pkg_path, hook_name, hook_env)
+		run_global_hook_scripts(hook_name, hook_env)
 	end
 
 	run_hooks("prepare")
@@ -1020,6 +1101,23 @@ build_from_source = function(pkg_name, skip_deps, options_str)
 	pkg.source()(hook_register)
 	os.execute("cd " .. shell_escape(old_dir))
 
+	local hook_env = {
+		ROOT = ROOT,
+		pkg = pkg,
+		OPTIONS = pkg.OPTIONS or {},
+		ARCH = io.popen("uname -m"):read("*all"):gsub("%s+", ""),
+		CURRENT_SOURCE_BASE_DIR = CURRENT_SOURCE_BASE_DIR,
+		os = os,
+		io = io,
+		print = print,
+		table = table,
+		string = string,
+		ipairs = ipairs,
+		pairs = pairs,
+		tonumber = tonumber,
+		tostring = tostring,
+	}
+	setmetatable(hook_env, { __index = _G })
 	local function run_hooks(hook_name)
 		if hooks[hook_name] then
 			for _, hook_entry in ipairs(hooks[hook_name]) do
@@ -1028,6 +1126,8 @@ build_from_source = function(pkg_name, skip_deps, options_str)
 				end
 			end
 		end
+		run_package_hook_scripts(pkg_path, hook_name, hook_env)
+		run_global_hook_scripts(hook_name, hook_env)
 	end
 	run_hooks("prepare")
 	run_hooks("build")
