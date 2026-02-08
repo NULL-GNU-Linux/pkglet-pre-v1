@@ -1,3 +1,9 @@
+# DEPRECATED
+`pkglet` has been rewritten again in a Portage style. this old version is now deprecated.
+
+
+# ------ START OLD README ------
+
 # pkglet
 
 `pkglet` (executed via the `pl` command) is a hybrid package manager designed for NULL GNU/Linux. It provides flexiblity for managing packages, supporting both binary and source-based installations.
@@ -59,3 +65,5 @@ Usage:
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+# ------ END OLD README ------
